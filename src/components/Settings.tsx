@@ -116,15 +116,17 @@ const RothIRASlider: React.FC<RothIRASliderProps> = ({ pct, eligible, onChange }
   return (
     <div className={`contrib-slider${eligible === 0 && pct > 0 ? ' contrib-slider--dimmed' : ''}`}>
       <div className="contrib-slider__head">
-        <span className="contrib-slider__label">
-          Roth IRA
-          {reduced && <span className="contrib-slider__phaseout"> · {eligible === 0 ? 'over income limit' : 'phased out'}</span>}
-        </span>
+        <span className="contrib-slider__label">Roth IRA</span>
         <span className="contrib-slider__value">
           {Math.round(pct * 100)}% · ${desired.toLocaleString()}
-          {reduced && <span className="contrib-slider__eligible"> → ${eligible.toLocaleString()} eligible</span>}
         </span>
       </div>
+      {reduced && (
+        <div className="contrib-slider__status">
+          <span className="contrib-slider__phaseout">{eligible === 0 ? 'Over income limit' : 'Phased out'}</span>
+          <span className="contrib-slider__eligible"> → ${eligible.toLocaleString()} eligible</span>
+        </div>
+      )}
       <input
         type="range"
         min={0}

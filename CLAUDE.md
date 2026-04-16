@@ -50,6 +50,10 @@ Not yet modeled (flagged in simulate.ts header): AMT, Roth conversion ladders, 7
 - `ROTH_IRA_LIMIT_2026 = 7_000`, `ROTH_IRA_LIMIT_CATCHUP_2026 = 8_000` in simulate.ts — Roth IRA annual limits (catch-up kicks in at 50).
 - Tax brackets are 2026 projections. Update when IRS publishes actuals.
 
+## CSS sizing
+
+All font sizes and spacing in `src/styles/app.css` use `rem` units scaled from `html { font-size: 20px }`. To adjust global UI density, change only the root font-size. New CSS should use `rem` (not `px`) for anything that should scale with the UI — font sizes, padding, gaps, margins. Keep `px` for borders, shadows, and fixed layout widths like `--sidebar-width`.
+
 ## Nominal vs real dollars
 
 The UI has a toggle ("show today's $") that deflates all dollar amounts by `(1 + inflation)^yearsElapsed`. This is display-only — `deflateTicks()` in `src/utils/format.ts`. The simulation always runs in nominal dollars.
