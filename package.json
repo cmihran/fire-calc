@@ -1,0 +1,31 @@
+{
+  "name": "networth-predict",
+  "version": "0.1.0",
+  "description": "Multi-scenario net worth projection engine",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "jsdom": "^29.0.2",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  },
+  "dependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-is": "^19.2.5",
+    "recharts": "^3.8.1",
+    "vite": "^8.0.8"
+  }
+}
