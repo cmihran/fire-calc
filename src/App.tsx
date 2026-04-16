@@ -58,7 +58,7 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          <Settings core={state.core} onChange={setCore} />
+          <Settings core={state.core} assumptions={ASSUMPTIONS} onChange={setCore} />
 
           <Controls sliders={state.sliders} onChange={setSliders} />
 

@@ -2,9 +2,9 @@
 
 Tax-aware net worth simulator with real federal/state brackets, retirement withdrawal modeling, and interactive exploration. Built for people who want to answer **"what happens to my money if I retire at X?"** without trusting a black-box SaaS.
 
-**[Live Demo →](https://cmihran.github.io/fire-calc/)**
+**Use the calculator here →** https://cmihran.github.io/fire-calc/
 
-![screenshot](screenshot.png)
+[![screenshot](screenshot.png)](https://cmihran.github.io/fire-calc/)
 
 ## What it does
 

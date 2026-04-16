@@ -10,19 +10,21 @@ if (import.meta.hot) {
 // YOUR NUMBERS — edit freely
 // ============================================================================
 export const YOU: CoreConfig = {
-  age: 30,
+  age: 35,
   retirementAge: 67,
+  endAge: 85,
+
   annualIncome: 60_000,
   monthlySpending: 2_500,
 
   afterTax: 8_000,
   traditional: 15_000,
   roth: 5_000,
-  homeEquity: 0,
+  homeEquity: 100_000,
   otherDebt: 0,
 
-  endAge: 85,
   pretax401kPct: 0.3,
+  rothIRAPct: 0.5,
   megaBackdoorPct: 0,
 };
 
@@ -30,7 +32,7 @@ export const YOU: CoreConfig = {
 // ASSUMPTIONS — sensible defaults, rarely touched
 // ============================================================================
 export const ASSUMPTIONS: Assumptions = {
-  expectedReturn: 0.07,
+  expectedReturn: 0.04,
   inflation: 0.025,
   incomeGrowthRate: 0.03,
   filingStatus: 'single',

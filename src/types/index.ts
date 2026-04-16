@@ -75,6 +75,7 @@ export interface CoreConfig {
 
   endAge: number;                  // x-axis cap (e.g., 100)
   pretax401kPct: number;          // 0-1, percentage of IRS employee limit ($23,500 in 2026)
+  rothIRAPct: number;             // 0-1, percentage of IRS Roth IRA limit ($7,000 in 2026, $8,000 if 50+)
   megaBackdoorPct: number;        // 0-1, percentage of estimated mega backdoor room (~$46,500 in 2026)
 }
 

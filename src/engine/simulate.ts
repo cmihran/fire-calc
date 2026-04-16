@@ -26,6 +26,28 @@ import { calcTax, calcNIIT, estimateLTCGRate, grossUpTraditionalWithdrawal } fro
 
 const TAXABLE_BASIS_RATIO = 0.5;  // assume half of any taxable withdrawal is basis (tax-free)
 
+// 2026 projected Roth IRA limits
+const ROTH_IRA_LIMIT_2026 = 7_000;
+const ROTH_IRA_LIMIT_CATCHUP_2026 = 8_000; // age 50+
+
+// MAGI phase-out ranges for direct Roth IRA contributions (2026 projected)
+const ROTH_PHASEOUT = {
+  single: { floor: 150_000, ceiling: 165_000 },
+  married_filing_jointly: { floor: 236_000, ceiling: 246_000 },
+} as const;
+
+function rothIRAAllowedContribution(
+  magi: number,
+  desiredContrib: number,
+  filingStatus: 'single' | 'married_filing_jointly',
+): number {
+  const { floor, ceiling } = ROTH_PHASEOUT[filingStatus];
+  if (magi <= floor) return desiredContrib;
+  if (magi >= ceiling) return 0;
+  const ratio = 1 - (magi - floor) / (ceiling - floor);
+  return Math.round(desiredContrib * ratio);
+}
+
 export function simulate(
   core: CoreConfig,
   assumptions: Assumptions,
@@ -58,6 +80,7 @@ export function simulate(
   let annualSpending = core.monthlySpending * 12;
   let pretax401k = core.pretax401kPct * LIMIT_PRETAX_2026;
   let employerMatch = comp * assumptions.employer401kMatchPct;
+  let rothIRABase = core.rothIRAPct * ROTH_IRA_LIMIT_2026;
   let megaBackdoor = core.megaBackdoorPct * LIMIT_MEGA_2026;
 
   const ticks: Tick[] = [];
@@ -95,6 +118,11 @@ export function simulate(
     const effectiveMatch = retired ? 0 : employerMatch;
     const effectiveMega = retired ? 0 : megaBackdoor;
 
+    // Roth IRA: catch-up at 50+, then phase out based on MAGI
+    const rothIRALimit = age >= 50 ? rothIRABase * (ROTH_IRA_LIMIT_CATCHUP_2026 / ROTH_IRA_LIMIT_2026) : rothIRABase;
+    const magi = effectiveComp - effectivePretax; // simplified MAGI: gross minus pretax 401k
+    const effectiveRothIRA = retired ? 0 : rothIRAAllowedContribution(magi, rothIRALimit, assumptions.filingStatus);
+
     const earnedTaxes = calcTax({
       grossIncome: effectiveComp,
       pretax401k: effectivePretax,
@@ -110,12 +138,12 @@ export function simulate(
       : 0;
 
     const totalEarnedTax = earnedTaxes.total + niit;
-    const afterTaxIncome = effectiveComp - totalEarnedTax - effectivePretax - effectiveMega;
+    const afterTaxIncome = effectiveComp - totalEarnedTax - effectivePretax - effectiveMega - effectiveRothIRA;
     const discretionary = afterTaxIncome - annualSpending;
 
     // --- Apply contributions (always, even with negative discretionary — contributions come out first) ---
     traditional = traditional + effectivePretax + effectiveMatch;
-    roth = roth + effectiveMega;
+    roth = roth + effectiveMega + effectiveRothIRA;
 
     // --- Drawdown if discretionary < 0 (retirement or overspending) ---
     let withdrawalTaxPaid = 0;
@@ -179,7 +207,7 @@ export function simulate(
 
     const totalSaved =
       discretionary +
-      effectivePretax + effectiveMatch + effectiveMega;
+      effectivePretax + effectiveMatch + effectiveRothIRA + effectiveMega;
 
     // --- Record flow fields ---
     ticks.push({
@@ -207,6 +235,7 @@ export function simulate(
     annualSpending *= 1 + spendingGrowth;
     pretax401k *= 1 + contribLimitGrowth;
     employerMatch = comp * assumptions.employer401kMatchPct;
+    rothIRABase *= 1 + contribLimitGrowth;
     megaBackdoor *= 1 + contribLimitGrowth;
   }
 

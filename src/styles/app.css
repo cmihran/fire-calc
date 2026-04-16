@@ -284,6 +284,27 @@ body {
   opacity: 0.5;
 }
 
+.contrib-slider--dimmed {
+  opacity: 0.35;
+}
+
+.contrib-slider__phaseout {
+  color: #f59e0b;
+  font-weight: 500;
+}
+
+.contrib-slider--dimmed .contrib-slider__phaseout {
+  color: #ef4444;
+}
+
+.contrib-slider__eligible {
+  color: #f59e0b;
+}
+
+.contrib-slider--dimmed .contrib-slider__eligible {
+  color: #ef4444;
+}
+
 /* ---------- Controls (rate sliders) ---------- */
 
 .controls {

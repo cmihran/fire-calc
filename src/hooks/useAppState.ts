@@ -32,6 +32,9 @@ export function useAppState(): AppStateAPI {
             const { hsa = 0, ...rest } = parsed.core;
             parsed.core = { ...rest, roth: (rest as CoreConfig).roth + hsa } as CoreConfig;
           }
+          if (typeof (parsed.core as unknown as Record<string, unknown>).rothIRAPct !== 'number') {
+            (parsed.core as unknown as Record<string, unknown>).rothIRAPct = 1.0;
+          }
           setState(parsed as AppState);
         }
       }
