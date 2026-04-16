@@ -53,7 +53,7 @@ export const Chart: React.FC<Props> = ({ data, milestoneAges, retirementAge, onR
     className={`card chart-card ${nearLine || dragging.current ? 'chart-card--grab' : ''}`}
     onMouseLeave={handleMouseUp}
   >
-    <ResponsiveContainer width="100%" height={340}>
+    <ResponsiveContainer width="100%" height={480}>
       <AreaChart
         data={data}
         margin={{ top: 10, right: 20, left: 10, bottom: 0 }}

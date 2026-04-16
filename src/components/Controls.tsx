@@ -13,24 +13,25 @@ export const Controls: React.FC<Props> = ({ sliders, onChange }) => {
 
   return (
     <div className="controls">
+      <div className="settings__group-label">Rates</div>
       <Slider
-        label={`Return rate: ${toPct(sliders.expectedReturn)}%`}
-        min={0} max={0.12} step={0.005}
+        label="Return"
         value={sliders.expectedReturn}
+        min={0} max={0.12} step={0.005}
         onChange={(v) => update('expectedReturn', v)}
         accent="cyan"
       />
       <Slider
-        label={`Comp growth: ${toPct(sliders.incomeGrowthRate)}%`}
-        min={0} max={0.2} step={0.005}
+        label="Comp growth"
         value={sliders.incomeGrowthRate}
+        min={0} max={0.2} step={0.005}
         onChange={(v) => update('incomeGrowthRate', v)}
         accent="purple"
       />
       <Slider
-        label={`Spending growth: ${toPct(sliders.spendingGrowth)}%`}
-        min={0} max={0.08} step={0.0025}
+        label="Spend growth"
         value={sliders.spendingGrowth}
+        min={0} max={0.08} step={0.0025}
         onChange={(v) => update('spendingGrowth', v)}
         accent="green"
       />
@@ -49,8 +50,13 @@ interface SliderProps {
 }
 
 const Slider: React.FC<SliderProps> = ({ label, min, max, step, value, onChange, accent = 'cyan' }) => (
-  <div>
-    <label className="slider__label">{label.toUpperCase()}</label>
+  <div className="rate-slider">
+    <div className="rate-slider__head">
+      <span className="rate-slider__label">{label}</span>
+      <span className={`rate-slider__value rate-slider__value--${accent}`}>
+        {(value * 100).toFixed(1)}%
+      </span>
+    </div>
     <input
       type="range"
       min={min}
@@ -62,7 +68,3 @@ const Slider: React.FC<SliderProps> = ({ label, min, max, step, value, onChange,
     />
   </div>
 );
-
-function toPct(v: number): string {
-  return (v * 100).toFixed(1);
-}

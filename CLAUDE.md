@@ -31,9 +31,9 @@ Three layers, each in its own directory:
   - `tax.ts` — Federal brackets (2026, single + MFJ), NY/CA state brackets, NYC local, FICA, income-aware LTCG (0/15/20%), NIIT (3.8%), `grossUpTraditionalWithdrawal()` for retirement drawdown.
   - `simulate.ts` — Annual-tick loop. Working years: tax → savings waterfall (Traditional ← pretax+match, Roth ← mega, Taxable ← discretionary). Retirement: withdrawal ordering (Taxable → Traditional → Roth) with proper tax grossup and 10% early-withdrawal penalty before 59.5.
 
-- **`src/components/`** — React presentation. Chart (Recharts stacked area with draggable retirement line), Controls (3 sliders), Settings (CoreConfig fields), MilestoneCards, YearTable.
+- **`src/components/`** — React presentation. Sidebar dashboard layout: Settings + Controls in a sticky left sidebar, Chart + MilestoneCards + YearTable in the main area.
 
-**State:** `useAppState` hook holds `AppState` (core + sliders + scenarios). Persists to localStorage (`networth-predict:v1`), debounced 200ms. No URL-hash encoding.
+**State:** `useAppState` hook holds `AppState` (core + sliders + scenarios). Persists to localStorage (`networth-predict:v1`), debounced 200ms. `?demo` URL param bypasses localStorage (read and write) and loads `DEFAULT_APP_STATE` defaults.
 
 **Types:** All in `src/types/index.ts`. Slim — `CoreConfig`, `Assumptions`, `SliderOverrides`, `Tick`, `Scenario`, `AppState`. The engine consumes these directly.
 

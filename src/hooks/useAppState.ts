@@ -13,17 +13,21 @@ export interface AppStateAPI {
 }
 
 export function useAppState(): AppStateAPI {
+  const isDemo = new URLSearchParams(window.location.search).has('demo');
   const [state, setState] = useState<AppState>(DEFAULT_APP_STATE);
   const hydrated = useRef(false);
 
-  // Restore from localStorage on mount, migrating legacy shapes forward.
+  // Restore from localStorage on mount (skip in demo mode).
   useEffect(() => {
+    if (isDemo) {
+      hydrated.current = true;
+      return;
+    }
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as AppState & { core?: { hsa?: number } };
         if (parsed?.core && parsed?.sliders) {
-          // Migration: old shape had a separate HSA bucket; fold into Roth.
           if (typeof parsed.core.hsa === 'number') {
             const { hsa = 0, ...rest } = parsed.core;
             parsed.core = { ...rest, roth: (rest as CoreConfig).roth + hsa } as CoreConfig;
@@ -36,11 +40,11 @@ export function useAppState(): AppStateAPI {
     } finally {
       hydrated.current = true;
     }
-  }, []);
+  }, [isDemo]);
 
-  // Persist to localStorage (debounced)
+  // Persist to localStorage (skip in demo mode)
   useEffect(() => {
-    if (!hydrated.current) return;
+    if (!hydrated.current || isDemo) return;
     const handle = window.setTimeout(() => {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -49,7 +53,7 @@ export function useAppState(): AppStateAPI {
       }
     }, SAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [state]);
+  }, [state, isDemo]);
 
   const setCore = useCallback((core: CoreConfig) => {
     setState((prev) => ({ ...prev, core }));

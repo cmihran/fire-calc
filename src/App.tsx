@@ -34,62 +34,82 @@ export const App: React.FC = () => {
     (a) => a >= state.core.age && a <= state.core.endAge,
   );
 
+  const startTick = ticks[0];
+  const retireTick = ticks.find((t) => t.age === state.core.retirementAge);
   const finalTick = ticks[ticks.length - 1];
 
   return (
     <div className="app">
-      <div className="app__container">
-        <header className="header">
-          <h1 className="header__title">Net Worth Projection</h1>
-          <p className="header__subtitle">
-            Ages {state.core.age}–{state.core.endAge}
-            {' · '}
-            {ASSUMPTIONS.stateOfResidence} {ASSUMPTIONS.filingStatus === 'single' ? 'single' : 'MFJ'} filer
-            {' · '}
-            {(state.sliders.incomeGrowthRate * 100).toFixed(1)}% comp growth
-            {' · '}
-            {(state.sliders.expectedReturn * 100).toFixed(1)}% nominal return
-            {finalTick && <> {' · '} ends at {fmt(finalTick.netWorth)}{displayMode === 'real' ? ' (today\u2019s $)' : ''}</>}
-            {' · '}
-            <button type="button" className="header__link" onClick={() =>
-              setDisplayMode((m) => (m === 'nominal' ? 'real' : 'nominal'))
-            }>
-              {displayMode === 'nominal' ? 'show today\u2019s $' : 'show nominal $'}
-            </button>
-            {' · '}
-            <button type="button" className="header__link" onClick={resetToDefaults}>
-              reset
-            </button>
-          </p>
-        </header>
+      <div className="dashboard">
+        <aside className="sidebar">
+          <div className="sidebar__header">
+            <h1 className="sidebar__title">Net Worth Projection</h1>
+            <div className="sidebar__actions">
+              <button
+                type="button"
+                className="toggle-btn"
+                onClick={() => setDisplayMode((m) => (m === 'nominal' ? 'real' : 'nominal'))}
+              >
+                {displayMode === 'nominal' ? "Today's $" : 'Nominal $'}
+              </button>
+              <button type="button" className="toggle-btn toggle-btn--muted" onClick={resetToDefaults}>
+                Reset
+              </button>
+            </div>
+          </div>
 
-        <Settings core={state.core} onChange={setCore} />
+          <Settings core={state.core} onChange={setCore} />
 
-        <Controls sliders={state.sliders} onChange={setSliders} />
+          <Controls sliders={state.sliders} onChange={setSliders} />
 
-        <Chart
-          data={ticks}
-          milestoneAges={milestoneAges}
-          retirementAge={state.core.retirementAge}
-          onRetirementAgeChange={(age) => setCore({ ...state.core, retirementAge: age })}
-        />
+          <div className="sidebar__assumptions">
+            Federal + {ASSUMPTIONS.stateOfResidence} tax brackets + FICA.
+            {' '}{ASSUMPTIONS.filingStatus === 'single' ? 'Single' : 'MFJ'} filer.
+            {' '}{(ASSUMPTIONS.employer401kMatchPct * 100).toFixed(0)}% employer match.
+            {' '}Limits grow {(ASSUMPTIONS.contributionLimitGrowth * 100).toFixed(1)}%/yr.
+            {' '}{(ASSUMPTIONS.taxDrag * 100).toFixed(1)}% tax drag.
+            {' '}No AMT, no equity vesting, no Social Security.
+          </div>
+        </aside>
 
-        <MilestoneCards ticks={ticks} milestoneAges={milestoneAges} />
+        <main className="main">
+          <div className="main__header">
+            {startTick && (
+              <div className="main__hero">
+                <span className="main__hero-label">Net worth at {startTick.age}</span>
+                <span className="main__hero-value">{fmt(startTick.netWorth)}</span>
+              </div>
+            )}
+            <span className="main__hero-arrow">&rarr;</span>
+            {retireTick && (
+              <div className="main__hero">
+                <span className="main__hero-label">Retirement at {retireTick.age}</span>
+                <span className="main__hero-value">{fmt(retireTick.netWorth)}</span>
+              </div>
+            )}
+            <span className="main__hero-arrow">&rarr;</span>
+            {finalTick && (
+              <div className="main__hero">
+                <span className="main__hero-label">
+                  End at {finalTick.age}
+                  {displayMode === 'real' ? ' (today\'s $)' : ''}
+                </span>
+                <span className="main__hero-value">{fmt(finalTick.netWorth)}</span>
+              </div>
+            )}
+          </div>
 
-        <YearTable ticks={ticks} milestoneAges={milestoneAges} />
+          <Chart
+            data={ticks}
+            milestoneAges={milestoneAges}
+            retirementAge={state.core.retirementAge}
+            onRetirementAgeChange={(age) => setCore({ ...state.core, retirementAge: age })}
+          />
 
-        <div className="assumptions">
-          <strong>Assumptions:</strong>{' '}
-          Federal + {ASSUMPTIONS.stateOfResidence} progressive tax brackets + FICA.
-          {' '}Pre-tax 401(k) {Math.round(state.core.pretax401kPct * 100)}% of max
-          {state.core.megaBackdoorPct > 0 && <> + {Math.round(state.core.megaBackdoorPct * 100)}% mega backdoor Roth</>}
-          {' '}+ {(ASSUMPTIONS.employer401kMatchPct * 100).toFixed(0)}% employer match.
-          {' '}Contribution limits grow {(ASSUMPTIONS.contributionLimitGrowth * 100).toFixed(1)}%/yr.
-          {' '}Monthly spending ${state.core.monthlySpending.toLocaleString()} growing {(state.sliders.spendingGrowth * 100).toFixed(1)}%/yr.
-          {' '}Taxable return reduced by {(ASSUMPTIONS.taxDrag * 100).toFixed(1)}% annual tax drag.
-          {' '}Nominal dollars (not inflation-adjusted). No AMT, no LTCG preferential rates, no equity vesting, no Social Security.
-          {' '}Edit <code>src/config/quickConfig.ts</code> for your numbers.
-        </div>
+          <MilestoneCards ticks={ticks} milestoneAges={milestoneAges} />
+
+          <YearTable ticks={ticks} milestoneAges={milestoneAges} />
+        </main>
       </div>
     </div>
   );

@@ -11,18 +11,18 @@ if (import.meta.hot) {
 // ============================================================================
 export const YOU: CoreConfig = {
   age: 30,
-  retirementAge: 65,
-  annualIncome: 95_000,
-  monthlySpending: 4_000,
+  retirementAge: 67,
+  annualIncome: 60_000,
+  monthlySpending: 2_500,
 
-  afterTax: 25_000,
-  traditional: 40_000,
-  roth: 15_000,
+  afterTax: 8_000,
+  traditional: 15_000,
+  roth: 5_000,
   homeEquity: 0,
   otherDebt: 0,
 
-  endAge: 90,
-  pretax401kPct: 0.5,             // 50% of the $23,500 employee limit
+  endAge: 85,
+  pretax401kPct: 0.3,
   megaBackdoorPct: 0,
 };
 
@@ -30,14 +30,14 @@ export const YOU: CoreConfig = {
 // ASSUMPTIONS — sensible defaults, rarely touched
 // ============================================================================
 export const ASSUMPTIONS: Assumptions = {
-  expectedReturn: 0.06,           // baseline; sliders override per-session
+  expectedReturn: 0.07,
   inflation: 0.025,
-  incomeGrowthRate: 0.05,
+  incomeGrowthRate: 0.03,
   filingStatus: 'single',
   stateOfResidence: 'NY',
-  employer401kMatchPct: 0.05,     // typical 5% of salary match
+  employer401kMatchPct: 0.04,
   yearsPastRetirement: 25,
-  taxDrag: 0.008,                 // 0.8% annual drag on taxable from dividends + realized gains
+  taxDrag: 0.008,
   contributionLimitGrowth: 0.025,
 };
 
