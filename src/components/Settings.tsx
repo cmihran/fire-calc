@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { CoreConfig, Assumptions } from '../types';
+import type { CoreConfig, Assumptions, StateCode } from '../types';
+import { ALL_STATE_CODES, STATE_NAMES } from '../engine/stateTaxData';
 
 const ROTH_PHASEOUT = {
   single: { floor: 150_000, ceiling: 165_000 },
@@ -169,6 +170,20 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
           <Field label="Monthly spend" value={core.monthlySpending} step={100} min={0} prefix="$"
             onChange={(v) => set('monthlySpending', v)} />
         </div>
+        <label className="field">
+          <span className="field__label">State</span>
+          <select
+            className="field__select"
+            value={core.stateOfResidence}
+            onChange={(e) => set('stateOfResidence', e.target.value as StateCode)}
+          >
+            {ALL_STATE_CODES.map((code) => (
+              <option key={code} value={code}>
+                {code} — {STATE_NAMES[code]}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="settings__group">

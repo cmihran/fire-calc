@@ -63,7 +63,7 @@ export const App: React.FC = () => {
           <Controls sliders={state.sliders} onChange={setSliders} />
 
           <div className="sidebar__assumptions">
-            Federal + {ASSUMPTIONS.stateOfResidence} tax brackets + FICA.
+            Federal + {state.core.stateOfResidence} tax brackets + FICA.
             {' '}{ASSUMPTIONS.filingStatus === 'single' ? 'Single' : 'MFJ'} filer.
             {' '}{(ASSUMPTIONS.employer401kMatchPct * 100).toFixed(0)}% employer match.
             {' '}Limits grow {(ASSUMPTIONS.contributionLimitGrowth * 100).toFixed(1)}%/yr.

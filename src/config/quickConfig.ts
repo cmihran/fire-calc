@@ -23,6 +23,7 @@ export const YOU: CoreConfig = {
   homeEquity: 100_000,
   otherDebt: 0,
 
+  stateOfResidence: 'NY',
   pretax401kPct: 0.3,
   rothIRAPct: 0.5,
   megaBackdoorPct: 0,
@@ -36,7 +37,6 @@ export const ASSUMPTIONS: Assumptions = {
   inflation: 0.025,
   incomeGrowthRate: 0.03,
   filingStatus: 'single',
-  stateOfResidence: 'NY',
   employer401kMatchPct: 0.04,
   yearsPastRetirement: 25,
   taxDrag: 0.008,

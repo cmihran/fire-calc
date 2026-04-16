@@ -264,6 +264,24 @@ body {
   -moz-appearance: textfield;
 }
 
+.field__select {
+  background: var(--bg-base);
+  border: 1px solid var(--border-soft);
+  border-radius: 0.286rem;
+  color: var(--text-base);
+  font-family: var(--mono-stack);
+  font-size: 0.786rem;
+  padding: 0.214rem 0.357rem;
+  width: 100%;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.field__select:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+
 /* ---------- Contribution sliders ---------- */
 
 .contrib-slider {

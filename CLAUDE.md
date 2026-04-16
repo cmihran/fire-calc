@@ -28,7 +28,8 @@ Three layers, each in its own directory:
 - **`src/config/quickConfig.ts`** — The `YOU` block (~12 editable fields) and `ASSUMPTIONS` block. This is the primary input surface. Exports `DEFAULT_APP_STATE`. Has `import.meta.hot.invalidate()` so editing this file triggers full HMR reload (useState won't pick up new defaults otherwise).
 
 - **`src/engine/`** — Pure functions, no React.
-  - `tax.ts` — Federal brackets (2026, single + MFJ), NY/CA state brackets, NYC local, FICA, income-aware LTCG (0/15/20%), NIIT (3.8%), `grossUpTraditionalWithdrawal()` for retirement drawdown.
+  - `stateTaxData.ts` — All 50 states + DC: progressive brackets (single + MFJ), standard deductions, local tax brackets (NYC, Yonkers), LTCG treatment flags. Adding a state = add entry to `STATE_TAX_DATA`.
+  - `tax.ts` — Federal brackets (2026, single + MFJ), FICA, income-aware LTCG (0/15/20%), NIIT (3.8%), `grossUpTraditionalWithdrawal()` for retirement drawdown. State/local tax computed from `stateTaxData.ts`.
   - `simulate.ts` — Annual-tick loop. Working years: tax → savings waterfall (Traditional ← pretax+match, Roth ← mega+IRA, Taxable ← discretionary). Roth IRA contributions are income-gated via MAGI phase-out; mega backdoor has no income limit. Retirement: withdrawal ordering (Taxable → Traditional → Roth) with proper tax grossup and 10% early-withdrawal penalty before 59.5.
 
 - **`src/components/`** — React presentation. Sidebar dashboard layout: Settings + Controls in a sticky left sidebar, Chart + MilestoneCards + YearTable in the main area.
@@ -39,16 +40,16 @@ Three layers, each in its own directory:
 
 ## Tax engine coverage
 
-Modeled: federal progressive brackets, NY + CA state brackets, NYC local, no-tax states (TX/WA/FL/NV), FICA (SS wage cap + additional Medicare), NIIT (3.8% above $200k/$250k), income-aware LTCG brackets (0/15/20%), early-withdrawal 10% penalty, Roth IRA income phase-out (MAGI-based, single $150k-$165k / MFJ $236k-$246k, with 50+ catch-up).
+Modeled: federal progressive brackets, all 50 states + DC (single + MFJ brackets, per-state standard deductions), NYC + Yonkers local, FICA (SS wage cap + additional Medicare), NIIT (3.8% above $200k/$250k), income-aware LTCG brackets (0/15/20%), early-withdrawal 10% penalty, Roth IRA income phase-out (MAGI-based, single $150k-$165k / MFJ $236k-$246k, with 50+ catch-up). State is user-selectable via dropdown (stored in `CoreConfig.stateOfResidence`).
 
-Not yet modeled (flagged in simulate.ts header): AMT, Roth conversion ladders, 72(t) SEPP, Social Security/pensions, RMDs, equity vesting (ISO/NSO/RSU), itemized deductions (uses approximate state deduction). Adding state coverage = add brackets to `STATE_BRACKETS` in tax.ts.
+Not yet modeled (flagged in simulate.ts header): AMT, Roth conversion ladders, 72(t) SEPP, Social Security/pensions, RMDs, equity vesting (ISO/NSO/RSU), city selector for states with multiple locals (NY auto-applies NYC). Adding state coverage = add entry to `STATE_TAX_DATA` in `stateTaxData.ts`.
 
 ## Key constants
 
 - `TAXABLE_BASIS_RATIO = 0.5` in simulate.ts — assumes half of taxable withdrawals are basis (untaxed). Real basis depends on holding history.
 - `LIMIT_PRETAX_2026 = 23_500`, `LIMIT_MEGA_2026 = 46_500` in simulate.ts — IRS limits for 401k contribution percentage inputs.
 - `ROTH_IRA_LIMIT_2026 = 7_000`, `ROTH_IRA_LIMIT_CATCHUP_2026 = 8_000` in simulate.ts — Roth IRA annual limits (catch-up kicks in at 50).
-- Tax brackets are 2026 projections. Update when IRS publishes actuals.
+- Federal brackets are 2026 projections. State brackets sourced from Tax Foundation 2024/2025 data. Update when IRS/states publish actuals.
 
 ## CSS sizing
 

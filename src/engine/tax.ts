@@ -1,4 +1,5 @@
 import type { TaxBracket, FilingStatus, StateCode, TaxResult } from '../types';
+import { STATE_TAX_DATA } from './stateTaxData';
 
 // ============================================================================
 // Federal — 2026 brackets (projected from 2025 with inflation adjustment).
@@ -30,61 +31,6 @@ const FEDERAL_STD_DEDUCTION: Record<FilingStatus, number> = {
   single: 14_600,
   married_filing_jointly: 29_200,
 };
-
-// ============================================================================
-// State / local brackets (single filer — MFJ TODO). Flat and no-tax states
-// included as empty bracket sets.
-// ============================================================================
-
-const NY_STATE: TaxBracket[] = [
-  { min: 0,          max: 8_500,      rate: 0.04 },
-  { min: 8_500,      max: 11_700,     rate: 0.045 },
-  { min: 11_700,     max: 13_900,     rate: 0.0525 },
-  { min: 13_900,     max: 80_650,     rate: 0.055 },
-  { min: 80_650,     max: 215_400,    rate: 0.06 },
-  { min: 215_400,    max: 1_077_550,  rate: 0.0685 },
-  { min: 1_077_550,  max: 5_000_000,  rate: 0.0965 },
-  { min: 5_000_000,  max: 25_000_000, rate: 0.103 },
-  { min: 25_000_000, max: Infinity,   rate: 0.109 },
-];
-
-const NYC_LOCAL: TaxBracket[] = [
-  { min: 0,       max: 12_000,    rate: 0.03078 },
-  { min: 12_000,  max: 25_000,    rate: 0.03762 },
-  { min: 25_000,  max: 50_000,    rate: 0.03819 },
-  { min: 50_000,  max: Infinity,  rate: 0.03876 },
-];
-
-// California — single filer, 2024 indexing
-const CA_STATE: TaxBracket[] = [
-  { min: 0,          max: 10_756,     rate: 0.01 },
-  { min: 10_756,     max: 25_499,     rate: 0.02 },
-  { min: 25_499,     max: 40_245,     rate: 0.04 },
-  { min: 40_245,     max: 55_866,     rate: 0.06 },
-  { min: 55_866,     max: 70_606,     rate: 0.08 },
-  { min: 70_606,     max: 360_659,    rate: 0.093 },
-  { min: 360_659,    max: 432_787,    rate: 0.103 },
-  { min: 432_787,    max: 721_314,    rate: 0.113 },
-  { min: 721_314,    max: 1_000_000,  rate: 0.123 },
-  { min: 1_000_000,  max: Infinity,   rate: 0.133 },  // includes 1% mental health tax
-];
-
-const STATE_BRACKETS: Record<StateCode, TaxBracket[]> = {
-  NY: NY_STATE,
-  CA: CA_STATE,
-  TX: [],
-  WA: [],
-  FL: [],
-  NV: [],
-  OTHER: [],
-};
-
-const LOCAL_BRACKETS: Partial<Record<StateCode, TaxBracket[]>> = {
-  NY: NYC_LOCAL,  // assume NYC resident when state = NY
-};
-
-// Approximate state itemized deduction in lieu of perfect per-state logic.
-const STATE_ITEMIZED_APPROX = 15_000;
 
 // ============================================================================
 // FICA — 2026 projected limits
@@ -171,7 +117,7 @@ export function federalLTCGRate(taxableIncome: number, filingStatus: FilingStatu
 /**
  * Blended LTCG + NIIT + state rate for a withdrawal from taxable accounts.
  * Income-aware: 0% federal below ~$47k, 15% mid-range, 20% above ~$519k,
- * plus 3.8% NIIT above $200k/$250k, plus state.
+ * plus 3.8% NIIT above $200k/$250k, plus state top marginal rate.
  */
 export function estimateLTCGRate(
   taxableIncome: number,
@@ -181,17 +127,10 @@ export function estimateLTCGRate(
   const federal = federalLTCGRate(taxableIncome, filingStatus);
   const niit = taxableIncome > NIIT_THRESHOLD[filingStatus] ? NIIT_RATE : 0;
 
-  const stateRates: Record<StateCode, number> = {
-    NY: 0.065,
-    CA: 0.093,
-    TX: 0,
-    WA: 0.07,
-    FL: 0,
-    NV: 0,
-    OTHER: 0.05,
-  };
+  const stateInfo = STATE_TAX_DATA[state];
+  const stateRate = stateInfo?.ltcgTaxed ? stateInfo.topRate : 0;
 
-  return federal + niit + stateRates[state];
+  return federal + niit + stateRate;
 }
 
 /**
@@ -233,10 +172,20 @@ export function calcTax(args: TaxInputs): TaxResult {
   const federalTaxable = Math.max(0, grossIncome - pretax401k - stdDeduction);
   const federal = calcBracketTax(federalTaxable, FEDERAL_BRACKETS[filingStatus]);
 
-  // State uses its own (approximate itemized) deduction over the same pre-tax-reduced income
-  const stateTaxable = Math.max(0, grossIncome - pretax401k - STATE_ITEMIZED_APPROX);
-  const stateTax = calcBracketTax(stateTaxable, STATE_BRACKETS[state]);
-  const localBrackets = LOCAL_BRACKETS[state] ?? [];
+  // State tax — use per-state standard deduction from data file
+  const stateInfo = STATE_TAX_DATA[state];
+  const stateStdDeduction = stateInfo?.stdDeduction[filingStatus] ?? 0;
+  const stateTaxable = Math.max(0, grossIncome - pretax401k - stateStdDeduction);
+  const stateBrackets = stateInfo?.brackets[filingStatus] ?? [];
+  const stateTax = calcBracketTax(stateTaxable, stateBrackets);
+
+  // Local tax (e.g. NYC) — uses same taxable base as state
+  // For now, auto-apply the first local bracket set if one exists.
+  // TODO: make city selectable when state has multiple locals (NY → NYC vs Yonkers)
+  const localKeys = stateInfo?.localBrackets ? Object.keys(stateInfo.localBrackets) : [];
+  const localBrackets = localKeys.length > 0
+    ? stateInfo!.localBrackets![localKeys[0]][filingStatus]
+    : [];
   const localTax = calcBracketTax(stateTaxable, localBrackets);
 
   const fica = calcFICA(grossIncome, filingStatus);

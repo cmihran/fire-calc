@@ -127,7 +127,7 @@ export function simulate(
       grossIncome: effectiveComp,
       pretax401k: effectivePretax,
       filingStatus: assumptions.filingStatus,
-      state: assumptions.stateOfResidence,
+      state: core.stateOfResidence,
     });
 
     // NIIT on investment income during working years (approximate: portfolio × return)
@@ -157,7 +157,7 @@ export function simulate(
       if (taxable > 0 && needNet > 0) {
         // Estimate income for LTCG bracket: comp (if any) + approximate withdrawal
         const estIncome = effectiveComp + needNet;
-        const ltcgRate = estimateLTCGRate(estIncome, assumptions.filingStatus, assumptions.stateOfResidence);
+        const ltcgRate = estimateLTCGRate(estIncome, assumptions.filingStatus, core.stateOfResidence);
         const effectiveLtcg = ltcgRate * TAXABLE_BASIS_RATIO;
         const maxNetFromTaxable = taxable * (1 - effectiveLtcg);
         if (maxNetFromTaxable >= needNet) {
@@ -175,7 +175,7 @@ export function simulate(
       // 2) Traditional — ordinary income + 10% penalty if age < 59.5
       if (traditional > 0 && needNet > 0) {
         const { gross, tax, penalty } = grossUpTraditionalWithdrawal(
-          needNet, age, assumptions.filingStatus, assumptions.stateOfResidence,
+          needNet, age, assumptions.filingStatus, core.stateOfResidence,
         );
         if (gross <= traditional) {
           traditional -= gross;
@@ -186,7 +186,7 @@ export function simulate(
           const drained = traditional;
           const fullTax = calcTax({
             grossIncome: drained, pretax401k: 0,
-            filingStatus: assumptions.filingStatus, state: assumptions.stateOfResidence,
+            filingStatus: assumptions.filingStatus, state: core.stateOfResidence,
           });
           const drainedPenalty = age < 59.5 ? drained * 0.1 : 0;
           const netDelivered = Math.max(0, drained - fullTax.total - drainedPenalty);

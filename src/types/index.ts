@@ -1,8 +1,13 @@
 export type FilingStatus = 'single' | 'married_filing_jointly';
 
-// Supported states for v1. State-tax coverage expands as brackets are added
-// to engine/tax.ts.
-export type StateCode = 'NY' | 'CA' | 'TX' | 'WA' | 'FL' | 'NV' | 'OTHER';
+// All 50 US states + DC. Matches keys in engine/stateTaxData.ts.
+export type StateCode =
+  | 'AL' | 'AK' | 'AZ' | 'AR' | 'CA' | 'CO' | 'CT' | 'DE' | 'DC'
+  | 'FL' | 'GA' | 'HI' | 'ID' | 'IL' | 'IN' | 'IA' | 'KS' | 'KY' | 'LA'
+  | 'ME' | 'MD' | 'MA' | 'MI' | 'MN' | 'MS' | 'MO' | 'MT' | 'NE' | 'NV'
+  | 'NH' | 'NJ' | 'NM' | 'NY' | 'NC' | 'ND' | 'OH' | 'OK' | 'OR'
+  | 'PA' | 'RI' | 'SC' | 'SD' | 'TN' | 'TX' | 'UT' | 'VT' | 'VA'
+  | 'WA' | 'WV' | 'WI' | 'WY';
 
 export interface TaxBracket {
   min: number;
@@ -73,6 +78,7 @@ export interface CoreConfig {
   homeEquity: number;
   otherDebt: number;
 
+  stateOfResidence: StateCode;
   endAge: number;                  // x-axis cap (e.g., 100)
   pretax401kPct: number;          // 0-1, percentage of IRS employee limit ($23,500 in 2026)
   rothIRAPct: number;             // 0-1, percentage of IRS Roth IRA limit ($7,000 in 2026, $8,000 if 50+)
@@ -84,7 +90,6 @@ export interface Assumptions {
   inflation: number;
   incomeGrowthRate: number;
   filingStatus: FilingStatus;
-  stateOfResidence: StateCode;
   employer401kMatchPct: number;
   yearsPastRetirement: number;
   taxDrag: number;                // annual drag on taxable accounts (dividends + realized gains)
