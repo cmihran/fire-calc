@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type {
   CoreConfig, Assumptions, StateCode, RothConversionPlan,
   HomeHolding, HomeEvent,
+  EquityCompPlan, EquityVestWindow, EquityExerciseEvent,
 } from '../types';
 import { ALL_STATE_CODES, STATE_NAMES, STATE_TAX_DATA } from '../engine/stateTaxData';
 
@@ -388,6 +389,104 @@ const HomeEventsEditor: React.FC<HomeEventsEditorProps> = ({ events, currentAge,
   );
 };
 
+interface EquityEditorProps {
+  plan: EquityCompPlan;
+  currentAge: number;
+  onChange: (plan: EquityCompPlan) => void;
+}
+
+const EquityEditor: React.FC<EquityEditorProps> = ({ plan, currentAge, onChange }) => {
+  const addVest = () => onChange({
+    ...plan,
+    vests: [
+      ...plan.vests,
+      { fromAge: currentAge, toAge: currentAge + 3, annualGross: 100_000 },
+    ],
+  });
+  const removeVest = (idx: number) => onChange({
+    ...plan,
+    vests: plan.vests.filter((_, i) => i !== idx),
+  });
+  const updateVest = (idx: number, patch: Partial<EquityVestWindow>) => onChange({
+    ...plan,
+    vests: plan.vests.map((v, i) => (i === idx ? { ...v, ...patch } : v)),
+  });
+
+  const addExercise = () => onChange({
+    ...plan,
+    exercises: [
+      ...plan.exercises,
+      { age: currentAge, type: 'NSO', amount: 100_000 },
+    ],
+  });
+  const removeExercise = (idx: number) => onChange({
+    ...plan,
+    exercises: plan.exercises.filter((_, i) => i !== idx),
+  });
+  const updateExercise = (idx: number, patch: Partial<EquityExerciseEvent>) => onChange({
+    ...plan,
+    exercises: plan.exercises.map((e, i) => (i === idx ? { ...e, ...patch } : e)),
+  });
+
+  return (
+    <div className="roth-conversions">
+      <div className="roth-conversions__subgroup">
+        <div className="roth-conversions__subgroup-label">RSU vests (annual, sold at vest)</div>
+        {plan.vests.map((v, idx) => (
+          <div key={`v-${idx}`} className="roth-conversions__row">
+            <label className="roth-conversions__field">
+              <span>From</span>
+              <input type="number" min={18} max={90} value={v.fromAge}
+                onChange={(e) => updateVest(idx, { fromAge: +e.target.value })} />
+            </label>
+            <label className="roth-conversions__field">
+              <span>To</span>
+              <input type="number" min={18} max={90} value={v.toAge}
+                onChange={(e) => updateVest(idx, { toAge: +e.target.value })} />
+            </label>
+            <label className="roth-conversions__field roth-conversions__field--wide">
+              <span>Annual $</span>
+              <input type="number" min={0} step={5000} value={v.annualGross}
+                onChange={(e) => updateVest(idx, { annualGross: +e.target.value })} />
+            </label>
+            <button type="button" className="roth-conversions__remove" onClick={() => removeVest(idx)}>×</button>
+          </div>
+        ))}
+        <button type="button" className="roth-conversions__add" onClick={addVest}>+ RSU vest</button>
+      </div>
+
+      <div className="roth-conversions__subgroup">
+        <div className="roth-conversions__subgroup-label">Option exercises (one-time)</div>
+        {plan.exercises.map((e, idx) => (
+          <div key={`x-${idx}`} className="roth-conversions__row equity-editor__row--exercise">
+            <label className="roth-conversions__field">
+              <span>Age</span>
+              <input type="number" min={18} max={90} value={e.age}
+                onChange={(ev) => updateExercise(idx, { age: +ev.target.value })} />
+            </label>
+            <label className="roth-conversions__field">
+              <span>Type</span>
+              <select value={e.type}
+                onChange={(ev) => updateExercise(idx, { type: ev.target.value as EquityExerciseEvent['type'] })}>
+                <option value="NSO">NSO</option>
+                <option value="ISO">ISO</option>
+                <option value="ESPP">ESPP</option>
+              </select>
+            </label>
+            <label className="roth-conversions__field roth-conversions__field--wide">
+              <span>Amount $</span>
+              <input type="number" min={0} step={5000} value={e.amount}
+                onChange={(ev) => updateExercise(idx, { amount: +ev.target.value })} />
+            </label>
+            <button type="button" className="roth-conversions__remove" onClick={() => removeExercise(idx)}>×</button>
+          </div>
+        ))}
+        <button type="button" className="roth-conversions__add" onClick={addExercise}>+ Exercise</button>
+      </div>
+    </div>
+  );
+};
+
 interface Props {
   core: CoreConfig;
   assumptions: Assumptions;
@@ -528,6 +627,15 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
             + Enable Social Security
           </button>
         )}
+      </div>
+
+      <div className="settings__group">
+        <div className="settings__group-label">Equity compensation</div>
+        <EquityEditor
+          plan={core.equityComp}
+          currentAge={core.age}
+          onChange={(plan) => set('equityComp', plan)}
+        />
       </div>
 
       <div className="settings__group">

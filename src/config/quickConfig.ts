@@ -39,6 +39,7 @@ export const YOU: CoreConfig = {
   rothConversions: [],
   currentHome: null,             // set to a HomeHolding if you currently own
   homeEvents: [],                // add buy/sell events via the Home editor
+  equityComp: { vests: [], exercises: [] },
 };
 
 // ============================================================================

@@ -98,15 +98,17 @@ test.describe('HSA contribution', () => {
 test.describe('Roth conversion editor', () => {
   test('add and remove a conversion window', async ({ page }) => {
     await load(page);
-    const addBtn = page.locator('.roth-conversions__add');
+    const addBtn = page.locator('.roth-conversions__add', { hasText: '+ Conversion window' });
     await expect(addBtn).toBeVisible();
 
     await addBtn.click();
-    const row = page.locator('.roth-conversions__row');
+    // Scope to the Roth conversions section only (not RSU/exercise rows).
+    const section = page.locator('.settings__group', { hasText: 'Roth conversions' });
+    const row = section.locator('.roth-conversions__row');
     await expect(row).toHaveCount(1);
 
     await row.locator('.roth-conversions__remove').click();
-    await expect(page.locator('.roth-conversions__row')).toHaveCount(0);
+    await expect(section.locator('.roth-conversions__row')).toHaveCount(0);
   });
 
   test('conversion window produces non-zero rothConversion in milestone detail', async ({ page }) => {
@@ -122,8 +124,9 @@ test.describe('Roth conversion editor', () => {
     await tradField.press('Tab');
 
     // Add a conversion window 55-65 with a realistic nominal target
-    await page.locator('.roth-conversions__add').click();
-    const row = page.locator('.roth-conversions__row');
+    await page.locator('.roth-conversions__add', { hasText: '+ Conversion window' }).click();
+    const section = page.locator('.settings__group', { hasText: 'Roth conversions' });
+    const row = section.locator('.roth-conversions__row');
     const inputs = row.locator('input');
     await inputs.nth(0).fill('55');
     await inputs.nth(1).fill('65');
@@ -173,6 +176,37 @@ test.describe('State retirement exclusion', () => {
 
     // PA fully exempts retirement income; effective rate should drop vs NY
     expect(nyRate).not.toBe(paRate);
+  });
+});
+
+test.describe('Equity comp', () => {
+  test('adding an RSU vest window raises effective tax rate for years inside the window', async ({ page }) => {
+    await load(page);
+    // Year-table columns: Age | Comp | Tax % | Spend | Net worth | ...
+    const row37 = page.locator('.year-table tbody tr', { hasText: /^37\b/ }).first();
+    const baseRate = await row37.locator('td').nth(2).textContent();
+
+    // Default RSU vest: fromAge = current age (35), toAge = 38, $100k/yr
+    await page.locator('.roth-conversions__add', { hasText: '+ RSU vest' }).click();
+    await page.waitForTimeout(150);
+
+    const rsuRate = await row37.locator('td').nth(2).textContent();
+    expect(rsuRate).not.toBe(baseRate);
+  });
+
+  test('adding an ISO exercise leaves regular tax essentially unchanged', async ({ page }) => {
+    await load(page);
+    const row = page.locator('.year-table tbody tr', { hasText: /^35\b/ }).first();
+    const baseRate = await row.locator('td').nth(2).textContent();
+
+    await page.locator('.roth-conversions__add', { hasText: '+ Exercise' }).click();
+    // Default is NSO at age 35 $100k. Switch to ISO — AMT not modeled yet.
+    const exerciseRow = page.locator('.roth-conversions__row.equity-editor__row--exercise');
+    await exerciseRow.locator('select').selectOption('ISO');
+    await page.waitForTimeout(150);
+
+    const isoRate = await row.locator('td').nth(2).textContent();
+    expect(isoRate).toBe(baseRate);
   });
 });
 

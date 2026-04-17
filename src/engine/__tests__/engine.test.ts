@@ -13,6 +13,7 @@ import {
   getYearConstants, BASE_YEAR, rmdStartAge, UNIFORM_LIFETIME_TABLE,
 } from '../constants';
 import { computeRMD, computeRothConversion, drawDown } from '../withdrawals';
+import { equityForYear } from '../equity';
 import { simulate } from '../simulate';
 
 const BASE_ASSUMPTIONS: Assumptions = {
@@ -50,6 +51,7 @@ const BASE_CORE: CoreConfig = {
   rothConversions: [],
   currentHome: null,
   homeEvents: [],
+  equityComp: { vests: [], exercises: [] },
 };
 
 const BASE_SLIDERS: SliderOverrides = {
@@ -280,6 +282,53 @@ describe('grossUpTraditionalWithdrawal', () => {
   });
 });
 
+// ─── Equity comp ─────────────────────────────────────────────────────────
+describe('equityForYear', () => {
+  it('returns zero when plan is null/undefined', () => {
+    const impact = equityForYear(null, 40);
+    expect(impact.rsu).toBe(0);
+    expect(impact.cashIn).toBe(0);
+  });
+  it('RSU window emits nominal gross only within age range', () => {
+    const plan = {
+      vests: [{ fromAge: 35, toAge: 38, annualGross: 100_000 }],
+      exercises: [],
+    };
+    expect(equityForYear(plan, 34).rsu).toBe(0);
+    expect(equityForYear(plan, 35).rsu).toBe(100_000);
+    expect(equityForYear(plan, 38).rsu).toBe(100_000);
+    expect(equityForYear(plan, 39).rsu).toBe(0);
+    expect(equityForYear(plan, 36).cashIn).toBe(100_000);
+  });
+  it('routes exercises by type; ISO produces no cash', () => {
+    const plan = {
+      vests: [],
+      exercises: [
+        { age: 40, type: 'NSO' as const, amount: 200_000 },
+        { age: 40, type: 'ESPP' as const, amount: 5_000 },
+        { age: 40, type: 'ISO' as const, amount: 300_000 },
+      ],
+    };
+    const i = equityForYear(plan, 40);
+    expect(i.nsoSpread).toBe(200_000);
+    expect(i.espp).toBe(5_000);
+    expect(i.isoBargain).toBe(300_000);
+    expect(i.cashIn).toBe(205_000); // ISO excluded
+  });
+  it('sums multiple overlapping vest windows', () => {
+    const plan = {
+      vests: [
+        { fromAge: 35, toAge: 40, annualGross: 100_000 },
+        { fromAge: 38, toAge: 42, annualGross: 50_000 },
+      ],
+      exercises: [],
+    };
+    expect(equityForYear(plan, 37).rsu).toBe(100_000);
+    expect(equityForYear(plan, 39).rsu).toBe(150_000);
+    expect(equityForYear(plan, 42).rsu).toBe(50_000);
+  });
+});
+
 // ─── RMD ──────────────────────────────────────────────────────────────────
 describe('computeRMD', () => {
   it('zero before start age', () => {
@@ -453,6 +502,63 @@ describe('simulate (end-to-end)', () => {
     const at56 = ticks.find((t) => t.age === 56)!;
     expect(at56.rothConversion).not.toBeNull();
     expect(at56.rothConversion!).toBeGreaterThan(0);
+  });
+  it('RSU vest raises ordinary tax and cash savings vs baseline', () => {
+    const base = { ...BASE_CORE, pretax401kPct: 0, rothIRAPct: 0 };
+    const withRSU: CoreConfig = {
+      ...base,
+      equityComp: {
+        vests: [{ fromAge: 35, toAge: 38, annualGross: 100_000 }],
+        exercises: [],
+      },
+    };
+    const baseTicks = simulate(base, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const rsuTicks = simulate(withRSU, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const base36 = baseTicks.find((t) => t.age === 36)!;
+    const rsu36 = rsuTicks.find((t) => t.age === 36)!;
+    expect(rsu36.taxes!).toBeGreaterThan(base36.taxes!);
+    expect(rsu36.savings!).toBeGreaterThan(base36.savings!);
+    // Outside the window, impact is gone
+    const base40 = baseTicks.find((t) => t.age === 40)!;
+    const rsu40 = rsuTicks.find((t) => t.age === 40)!;
+    // Outside window: difference is only from compounded higher savings, not fresh RSU.
+    const inWindowDelta = rsu36.taxes! - base36.taxes!;
+    const outOfWindowDelta = rsu40.taxes! - base40.taxes!;
+    expect(outOfWindowDelta).toBeLessThan(inWindowDelta * 0.1);
+  });
+  it('ISO exercise does NOT raise regular federal tax (AMT deferred)', () => {
+    const base = { ...BASE_CORE, pretax401kPct: 0, rothIRAPct: 0 };
+    const withISO: CoreConfig = {
+      ...base,
+      equityComp: {
+        vests: [],
+        exercises: [{ age: 40, type: 'ISO', amount: 500_000 }],
+      },
+    };
+    const baseTicks = simulate(base, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const isoTicks = simulate(withISO, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const base40 = baseTicks.find((t) => t.age === 40)!;
+    const iso40 = isoTicks.find((t) => t.age === 40)!;
+    // Regular federal tax should be essentially unchanged — only AMT would catch ISO
+    expect(Math.abs(iso40.taxes! - base40.taxes!)).toBeLessThan(100);
+  });
+  it('NSO exercise raises ordinary + FICA at the exercise age only', () => {
+    const base = { ...BASE_CORE, pretax401kPct: 0, rothIRAPct: 0 };
+    const withNSO: CoreConfig = {
+      ...base,
+      equityComp: {
+        vests: [],
+        exercises: [{ age: 38, type: 'NSO', amount: 250_000 }],
+      },
+    };
+    const baseTicks = simulate(base, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const nsoTicks = simulate(withNSO, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const nso37 = nsoTicks.find((t) => t.age === 37)!;
+    const base37 = baseTicks.find((t) => t.age === 37)!;
+    expect(nso37.taxes!).toBeCloseTo(base37.taxes!, -2);
+    const nso38 = nsoTicks.find((t) => t.age === 38)!;
+    const base38 = baseTicks.find((t) => t.age === 38)!;
+    expect(nso38.taxes!).toBeGreaterThan(base38.taxes! + 50_000);
   });
   it('taxable basis grows with new contributions during accumulation', () => {
     const core = { ...BASE_CORE, afterTax: 0, afterTaxBasis: 0 };

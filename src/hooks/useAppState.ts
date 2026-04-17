@@ -44,6 +44,16 @@ function migrateCore(raw: Partial<CoreConfig> & Record<string, unknown>): CoreCo
     homeEvents: Array.isArray(raw.homeEvents)
       ? (raw.homeEvents as CoreConfig['homeEvents'])
       : [],
+    equityComp: (raw.equityComp && typeof raw.equityComp === 'object')
+      ? {
+          vests: Array.isArray((raw.equityComp as { vests?: unknown }).vests)
+            ? (raw.equityComp as { vests: CoreConfig['equityComp']['vests'] }).vests
+            : [],
+          exercises: Array.isArray((raw.equityComp as { exercises?: unknown }).exercises)
+            ? (raw.equityComp as { exercises: CoreConfig['equityComp']['exercises'] }).exercises
+            : [],
+        }
+      : { vests: [], exercises: [] },
   };
 }
 

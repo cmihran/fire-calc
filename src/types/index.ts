@@ -181,6 +181,25 @@ export type HomeEvent =
       sellingCostPct: number;        // realtor + closing, e.g. 0.07
     };
 
+/** A recurring annual RSU vest stream across a contiguous age range. */
+export interface EquityVestWindow {
+  fromAge: number;
+  toAge: number;                  // inclusive
+  annualGross: number;            // nominal dollars per year (constant across window)
+}
+
+/** One-time equity event at a specific age. */
+export interface EquityExerciseEvent {
+  age: number;
+  type: 'NSO' | 'ISO' | 'ESPP';
+  amount: number;                 // NSO/ESPP: ordinary inclusion. ISO: AMT bargain element.
+}
+
+export interface EquityCompPlan {
+  vests: EquityVestWindow[];
+  exercises: EquityExerciseEvent[];
+}
+
 export interface CoreConfig {
   age: number;
   retirementAge: number;
@@ -210,6 +229,9 @@ export interface CoreConfig {
   currentHome: HomeHolding | null;
   /** Planned future buy/sell events, processed at their `atAge`. */
   homeEvents: HomeEvent[];
+
+  /** RSU vest windows + NSO/ISO/ESPP exercise events. */
+  equityComp: EquityCompPlan;
 }
 
 export interface Assumptions {

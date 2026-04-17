@@ -921,9 +921,42 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.roth-conversions__field input:focus {
+.roth-conversions__field input:focus,
+.roth-conversions__field select:focus {
   outline: none;
   border-color: rgba(72, 199, 116, 0.45);
+}
+
+.roth-conversions__field select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  color: var(--text-base);
+  font-family: var(--mono-stack);
+  font-size: 0.714rem;
+  padding: 0.286rem 0.429rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.equity-editor__row--exercise {
+  grid-template-columns: 0.8fr 1fr 1.6fr auto;
+}
+
+.roth-conversions__subgroup {
+  margin-top: 0.5rem;
+}
+
+.roth-conversions__subgroup:first-child {
+  margin-top: 0;
+}
+
+.roth-conversions__subgroup-label {
+  font-size: 0.571rem;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 0.357rem;
 }
 
 .roth-conversions__add {

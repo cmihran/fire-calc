@@ -10,6 +10,7 @@ import {
   annualMortgagePayment, amortizeYear, computeSaleOutcome,
   newHomeFromBuyEvent, buyEventCashNeeded,
 } from './home';
+import { equityForYear } from './equity';
 
 /**
  * Annual-tick projection.
@@ -26,8 +27,8 @@ import {
  *     voluntary Roth conversions in configured windows.
  *   - Deficit covered in order: Taxable → Traditional → Roth → HSA(65+).
  *
- * Not modeled: AMT, equity comp (RSU/ISO/NSO/ESPP), QSBS, dependents,
- * stochastic returns, Rule of 55 / 72(t).
+ * Not modeled: QSBS, dependents, stochastic returns, Rule of 55 / 72(t),
+ * ACA PTC.
  */
 
 /** Claiming-age multiplier on Primary Insurance Amount. FRA = 67 for anyone born 1960+. */
@@ -200,7 +201,14 @@ export function simulate(
     }
     const annualHomeCashOut = mortgagePaidThisYear + homeCarryCost + buyCashNeeded;
 
+    // ─── Equity comp ──────────────────────────────────────────────────
+    // Vests/exercises apply whenever the plan says so, whether retired or
+    // not — deferred RSUs continue past retirement if configured.
+    const equity = equityForYear(core.equityComp, age);
+
     // ─── Contributions (pre-tax and post-tax) ─────────────────────────
+    // 401k/HSA/mega-backdoor eligibility is tied to salary deferrals only —
+    // RSU and NSO have their own withholding stream and don't qualify.
     const pretax401k = retired ? 0 : Math.min(effectiveComp, core.pretax401kPct * yc.limitPretax401k);
     const employerMatch = retired ? 0 : effectiveComp * assumptions.employer401kMatchPct;
     const hsaContrib = retired ? 0 : Math.min(
@@ -212,7 +220,11 @@ export function simulate(
       core.megaBackdoorPct * yc.limitMegaBackdoor,
     );
 
-    const magi = Math.max(0, effectiveComp - pretax401k - hsaContrib);
+    // Roth IRA MAGI includes RSU/NSO/ESPP ordinary; phase-out must see it.
+    const magi = Math.max(0,
+      effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
+      - pretax401k - hsaContrib,
+    );
     const desiredRothIRA = core.rothIRAPct * (age >= 50 ? yc.limitRothIRACatchup : yc.limitRothIRA);
     const rothIRAContrib = retired
       ? 0
@@ -238,6 +250,7 @@ export function simulate(
     // Compute baseline ordinary-income level for conversion headroom decision
     const baselineOrdinaryForConversion =
       effectiveComp - pretax401k - hsaContrib
+      + equity.rsu + equity.nsoSpread + equity.espp
       + ordDivYield + realizedGainYield  // conservative inclusion; ignores LTCG vs ordinary split
       + ssBenefit + rmd;
     const rothConversion = computeRothConversion(
@@ -250,6 +263,10 @@ export function simulate(
     let sources: IncomeSources = {
       ...ZERO_INCOME,
       w2: effectiveComp,
+      rsu: equity.rsu,
+      nsoSpread: equity.nsoSpread,
+      espp: equity.espp,
+      isoBargain: equity.isoBargain,
       qualifiedDividends: qdYield,
       ordinaryDividends: ordDivYield,
       ltcg: realizedGainYield,
@@ -278,7 +295,9 @@ export function simulate(
     taxableBasis += qdYield + ordDivYield + realizedGainYield;
 
     // ─── Cash flow ────────────────────────────────────────────────────
-    const cashIn = effectiveComp + ssBenefit + rmd + sellCashProceeds;
+    // equity.cashIn covers RSU sold at vest + NSO/ESPP cashless exercise.
+    // ISO bargain is stashed on IncomeSources for AMT but produces no cash.
+    const cashIn = effectiveComp + equity.cashIn + ssBenefit + rmd + sellCashProceeds;
     const cashOut =
       pretax401k + hsaContrib + megaBackdoor + rothIRAContrib
       + baselineTax.total + annualSpending + annualHomeCashOut;
@@ -320,7 +339,9 @@ export function simulate(
       pretax401k + employerMatch + megaBackdoor + rothIRAContrib + hsaContrib
       + Math.max(0, discretionary);
     const totalTax = baselineTax.total + withdrawalTax + withdrawalPenalty;
-    const grossForRate = effectiveComp + ssBenefit + rmd + qdYield + ordDivYield + realizedGainYield;
+    const grossForRate =
+      effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
+      + ssBenefit + rmd + qdYield + ordDivYield + realizedGainYield;
     ticks.push({
       ...startTick,
       comp: Math.round(effectiveComp),

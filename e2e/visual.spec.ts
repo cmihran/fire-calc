@@ -18,8 +18,9 @@ test('screenshot: Roth conversion ladder active', async ({ page }) => {
   await page.locator('.field', { hasText: 'Retire' }).locator('input').press('Tab');
   await page.locator('.field', { hasText: 'Traditional' }).locator('input').fill('1000000');
   await page.locator('.field', { hasText: 'Traditional' }).locator('input').press('Tab');
-  await page.locator('.roth-conversions__add').click();
-  const inputs = page.locator('.roth-conversions__row').locator('input');
+  await page.locator('.roth-conversions__add', { hasText: '+ Conversion window' }).click();
+  const section = page.locator('.settings__group', { hasText: 'Roth conversions' });
+  const inputs = section.locator('.roth-conversions__row').locator('input');
   await inputs.nth(0).fill('55');
   await inputs.nth(1).fill('65');
   await inputs.nth(2).fill('200000');

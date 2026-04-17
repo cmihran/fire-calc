@@ -133,8 +133,10 @@ At `age ≥ 73` (74 in 2033, 75 in 2033 — hardcode the schedule, ~10 lines), f
 
 Stage only after Phase 1 is stable. Each of these is meaningfully larger than P1 items.
 
-### P2.1 — Equity comp module
-New `src/engine/equity.ts`. `CoreConfig.equityComp?: { rsuVests: Array<{year, gross, fmvAtVest}>, ispPurchases: ..., isoGrants: ..., nsoExercises: ... }`. RSUs and NSO spreads hit `w2` in `IncomeSources`. ISO bargain element hits AMT preference base. ESPP discount hits ordinary (disqualifying) or LTCG (qualifying) depending on sale date. Touches: UI input surface, `IncomeSources`, AMT calc.
+### P2.1 — Equity comp module ✅ (done)
+`src/engine/equity.ts` ships `equityForYear(plan, age)` returning `{ rsu, nsoSpread, espp, isoBargain, cashIn }`. Two input shapes: RSU vest windows (constant nominal/year across `[fromAge, toAge]`, sold at vest — proceeds hit cashIn and basis on taxable) and point-in-time exercises (NSO/ISO/ESPP). NSO/ESPP route to ordinary + FICA and produce cash; ISO bargain is stashed for AMT (P2.2) with no regular-tax or cash impact. RSU is excluded from 401k/HSA/mega-backdoor eligibility (salary-only). MAGI for Roth IRA phase-out includes RSU/NSO/ESPP. UI editor lives in Settings alongside Roth conversions.
+
+Not yet: ESPP qualifying-vs-disqualifying disposition logic (treated as disqualifying), RSU growth rate (constant nominal across window — user adds subsequent windows for growth).
 
 ### P2.2 — AMT
 New function `calcAMT(sources, year, filingStatus)` alongside regular federal. Tentative minimum tax = (AMT income − AMT exemption phase-out) × AMT rate; owe max(regular, AMT). Main trigger: ISO exercises. Exemption 2026 ~$88,100 single / $137,000 MFJ; phase-out at $626k/$1.25M. Relatively self-contained once `IncomeSources` exists.
