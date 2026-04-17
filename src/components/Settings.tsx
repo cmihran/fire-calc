@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { CoreConfig, Assumptions, StateCode } from '../types';
-import { ALL_STATE_CODES, STATE_NAMES } from '../engine/stateTaxData';
+import type { CoreConfig, Assumptions, StateCode, RothConversionPlan } from '../types';
+import { ALL_STATE_CODES, STATE_NAMES, STATE_TAX_DATA } from '../engine/stateTaxData';
 
 const ROTH_PHASEOUT = {
   single: { floor: 150_000, ceiling: 165_000 },
   married_filing_jointly: { floor: 236_000, ceiling: 246_000 },
 } as const;
 
-function rothIRAEligibleDollars(income: number, pretax401kPct: number, desiredPct: number, filingStatus: 'single' | 'married_filing_jointly'): number {
-  const magi = income - pretax401kPct * 23_500;
+function rothIRAEligibleDollars(
+  income: number, pretax401kPct: number, hsaContribPct: number,
+  desiredPct: number, filingStatus: 'single' | 'married_filing_jointly',
+): number {
+  const magi = income - pretax401kPct * 23_500 - hsaContribPct * 8_550;
   const desired = Math.round(desiredPct * 7_000);
   const { floor, ceiling } = ROTH_PHASEOUT[filingStatus];
   if (magi <= floor) return desired;
@@ -141,6 +144,44 @@ const RothIRASlider: React.FC<RothIRASliderProps> = ({ pct, eligible, onChange }
   );
 };
 
+interface RothConversionEditorProps {
+  plans: RothConversionPlan[];
+  onChange: (plans: RothConversionPlan[]) => void;
+}
+
+const RothConversionEditor: React.FC<RothConversionEditorProps> = ({ plans, onChange }) => {
+  const add = () => onChange([...plans, { fromAge: 55, toAge: 65, targetBracketTop: 100_525 }]);
+  const remove = (idx: number) => onChange(plans.filter((_, i) => i !== idx));
+  const update = (idx: number, patch: Partial<RothConversionPlan>) => {
+    onChange(plans.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
+  };
+  return (
+    <div className="roth-conversions">
+      {plans.map((p, idx) => (
+        <div key={idx} className="roth-conversions__row">
+          <label className="roth-conversions__field">
+            <span>From</span>
+            <input type="number" min={40} max={100} value={p.fromAge}
+              onChange={(e) => update(idx, { fromAge: +e.target.value })} />
+          </label>
+          <label className="roth-conversions__field">
+            <span>To</span>
+            <input type="number" min={40} max={100} value={p.toAge}
+              onChange={(e) => update(idx, { toAge: +e.target.value })} />
+          </label>
+          <label className="roth-conversions__field roth-conversions__field--wide">
+            <span>Fill to $</span>
+            <input type="number" min={0} step={5000} value={p.targetBracketTop}
+              onChange={(e) => update(idx, { targetBracketTop: +e.target.value })} />
+          </label>
+          <button type="button" className="roth-conversions__remove" onClick={() => remove(idx)}>×</button>
+        </div>
+      ))}
+      <button type="button" className="roth-conversions__add" onClick={add}>+ Conversion window</button>
+    </div>
+  );
+};
+
 interface Props {
   core: CoreConfig;
   assumptions: Assumptions;
@@ -151,6 +192,10 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
   const set = <K extends keyof CoreConfig>(key: K, value: CoreConfig[K]) => {
     onChange({ ...core, [key]: value });
   };
+
+  const stateInfo = STATE_TAX_DATA[core.stateOfResidence];
+  const cityOptions = stateInfo?.localBrackets ? Object.keys(stateInfo.localBrackets) : [];
+  const hasCities = cityOptions.length > 0;
 
   return (
     <div className="settings">
@@ -175,7 +220,12 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
           <select
             className="field__select"
             value={core.stateOfResidence}
-            onChange={(e) => set('stateOfResidence', e.target.value as StateCode)}
+            onChange={(e) => {
+              const nextState = e.target.value as StateCode;
+              const nextCities = STATE_TAX_DATA[nextState]?.localBrackets;
+              const nextCity = nextCities ? Object.keys(nextCities)[0] : null;
+              onChange({ ...core, stateOfResidence: nextState, cityOfResidence: nextCity });
+            }}
           >
             {ALL_STATE_CODES.map((code) => (
               <option key={code} value={code}>
@@ -184,6 +234,21 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
             ))}
           </select>
         </label>
+        {hasCities && (
+          <label className="field">
+            <span className="field__label">City</span>
+            <select
+              className="field__select"
+              value={core.cityOfResidence ?? ''}
+              onChange={(e) => set('cityOfResidence', e.target.value === '' ? null : e.target.value)}
+            >
+              <option value="">None / elsewhere</option>
+              {cityOptions.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       <div className="settings__group">
@@ -191,10 +256,14 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
         <div className="settings__grid settings__grid--2col">
           <Field label="After-tax" value={core.afterTax} step={1000} min={0} prefix="$"
             onChange={(v) => set('afterTax', v)} />
+          <Field label="…basis" value={core.afterTaxBasis} step={1000} min={0} prefix="$"
+            onChange={(v) => set('afterTaxBasis', v)} />
           <Field label="Traditional" value={core.traditional} step={1000} min={0} prefix="$"
             onChange={(v) => set('traditional', v)} />
-          <Field label="Roth + HSA" value={core.roth} step={1000} min={0} prefix="$"
+          <Field label="Roth" value={core.roth} step={1000} min={0} prefix="$"
             onChange={(v) => set('roth', v)} />
+          <Field label="HSA" value={core.hsa} step={500} min={0} prefix="$"
+            onChange={(v) => set('hsa', v)} />
           <Field label="Home equity" value={core.homeEquity} step={1000} min={0} prefix="$"
             onChange={(v) => set('homeEquity', v)} />
           <Field label="Other debt" value={core.otherDebt} step={1000} min={0} prefix="$"
@@ -212,7 +281,10 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
         />
         <RothIRASlider
           pct={core.rothIRAPct}
-          eligible={rothIRAEligibleDollars(core.annualIncome, core.pretax401kPct, core.rothIRAPct, assumptions.filingStatus)}
+          eligible={rothIRAEligibleDollars(
+            core.annualIncome, core.pretax401kPct, core.hsaContribPct,
+            core.rothIRAPct, assumptions.filingStatus,
+          )}
           onChange={(v) => set('rothIRAPct', v)}
         />
         <ContribSlider
@@ -220,6 +292,43 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
           pct={core.megaBackdoorPct}
           limit={46_500}
           onChange={(v) => set('megaBackdoorPct', v)}
+        />
+        <ContribSlider
+          label="HSA"
+          pct={core.hsaContribPct}
+          limit={8_550}
+          onChange={(v) => set('hsaContribPct', v)}
+        />
+      </div>
+
+      <div className="settings__group">
+        <div className="settings__group-label">Social Security</div>
+        {core.socialSecurity ? (
+          <>
+            <div className="settings__grid settings__grid--2col">
+              <Field label="Claim age" value={core.socialSecurity.claimAge} step={1} min={62} max={70}
+                onChange={(v) => set('socialSecurity', { ...core.socialSecurity!, claimAge: v })} />
+              <Field label="PIA / mo" value={core.socialSecurity.estimatedPIA} step={50} min={0} prefix="$"
+                onChange={(v) => set('socialSecurity', { ...core.socialSecurity!, estimatedPIA: v })} />
+            </div>
+            <button type="button" className="roth-conversions__remove settings__inline-btn"
+              onClick={() => set('socialSecurity', null)}>
+              Disable SS
+            </button>
+          </>
+        ) : (
+          <button type="button" className="roth-conversions__add"
+            onClick={() => set('socialSecurity', { claimAge: 67, estimatedPIA: 2_800 })}>
+            + Enable Social Security
+          </button>
+        )}
+      </div>
+
+      <div className="settings__group">
+        <div className="settings__group-label">Roth conversions</div>
+        <RothConversionEditor
+          plans={core.rothConversions}
+          onChange={(plans) => set('rothConversions', plans)}
         />
       </div>
     </div>

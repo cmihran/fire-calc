@@ -63,12 +63,13 @@ export const App: React.FC = () => {
           <Controls sliders={state.sliders} onChange={setSliders} />
 
           <div className="sidebar__assumptions">
-            Federal + {state.core.stateOfResidence} tax brackets + FICA.
+            Federal + {state.core.stateOfResidence}
+            {state.core.cityOfResidence ? ` (${state.core.cityOfResidence})` : ''} tax brackets + FICA + NIIT.
             {' '}{ASSUMPTIONS.filingStatus === 'single' ? 'Single' : 'MFJ'} filer.
             {' '}{(ASSUMPTIONS.employer401kMatchPct * 100).toFixed(0)}% employer match.
-            {' '}Limits grow {(ASSUMPTIONS.contributionLimitGrowth * 100).toFixed(1)}%/yr.
-            {' '}{(ASSUMPTIONS.taxDrag * 100).toFixed(1)}% tax drag.
-            {' '}No AMT, no equity vesting, no Social Security.
+            {' '}Brackets/limits grow {(ASSUMPTIONS.bracketIndexing * 100).toFixed(1)}%/yr.
+            {' '}Div/gain yield {((ASSUMPTIONS.qualifiedDividendYield + ASSUMPTIONS.ordinaryDividendYield + ASSUMPTIONS.realizedGainYield) * 100).toFixed(1)}%.
+            {' '}SS, RMDs, Roth conversions modeled. No AMT, no equity comp yet.
           </div>
         </aside>
 

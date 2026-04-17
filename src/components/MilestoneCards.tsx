@@ -35,11 +35,19 @@ export const MilestoneCards: React.FC<Props> = ({ ticks, milestoneAges }) => {
         return (
           <div className="milestone-detail">
             <Row label="Traditional" value={fmt(m.traditional)} />
-            <Row label="Roth + HSA" value={fmt(m.roth)} />
+            <Row label="Roth" value={fmt(m.roth)} />
+            {m.hsa > 0 && <Row label="HSA" value={fmt(m.hsa)} />}
             <Row label="Taxable" value={fmt(m.taxable)} />
             {m.homeEquity > 0 && <Row label="Home equity" value={fmt(m.homeEquity)} />}
             <div className="milestone-detail__divider" />
             <Row label="Comp" value={fmt(m.comp)} />
+            {m.socialSecurity != null && m.socialSecurity > 0 && (
+              <Row label="Social Security" value={fmt(m.socialSecurity)} />
+            )}
+            {m.rmd != null && m.rmd > 0 && <Row label="RMD" value={fmt(m.rmd)} />}
+            {m.rothConversion != null && m.rothConversion > 0 && (
+              <Row label="Roth conversion" value={fmt(m.rothConversion)} />
+            )}
           </div>
         );
       })()}

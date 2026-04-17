@@ -34,7 +34,9 @@ export function deflateTicks(ticks: Tick[], startAge: number, inflation: number)
       ...t,
       traditional: Math.round(t.traditional / factor),
       roth: Math.round(t.roth / factor),
+      hsa: Math.round(t.hsa / factor),
       taxable: Math.round(t.taxable / factor),
+      taxableBasis: Math.round(t.taxableBasis / factor),
       homeEquity: Math.round(t.homeEquity / factor),
       otherDebt: Math.round(t.otherDebt / factor),
       netWorth: Math.round(t.netWorth / factor),
@@ -43,6 +45,9 @@ export function deflateTicks(ticks: Tick[], startAge: number, inflation: number)
       taxes: div(t.taxes),
       withdrawalTax: div(t.withdrawalTax),
       savings: div(t.savings),
+      socialSecurity: div(t.socialSecurity),
+      rmd: div(t.rmd),
+      rothConversion: div(t.rothConversion),
       // taxRate is a percentage — don't deflate
     };
   });

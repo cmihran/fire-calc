@@ -12,12 +12,32 @@ export interface AppStateAPI {
   resetToDefaults: () => void;
 }
 
+/** Fill in any fields added after a user's localStorage was written. */
+function migrateCore(raw: Partial<CoreConfig> & Record<string, unknown>): CoreConfig {
+  const base = DEFAULT_APP_STATE.core;
+  return {
+    ...base,
+    ...(raw as CoreConfig),
+    afterTaxBasis: typeof raw.afterTaxBasis === 'number'
+      ? raw.afterTaxBasis
+      : (typeof raw.afterTax === 'number' ? raw.afterTax * 0.5 : base.afterTaxBasis),
+    hsa: typeof raw.hsa === 'number' ? raw.hsa : 0,
+    hsaContribPct: typeof raw.hsaContribPct === 'number' ? raw.hsaContribPct : 0,
+    cityOfResidence: (typeof raw.cityOfResidence === 'string' || raw.cityOfResidence === null)
+      ? raw.cityOfResidence as string | null
+      : (raw.stateOfResidence === 'NY' ? 'NYC' : null),
+    socialSecurity: raw.socialSecurity !== undefined
+      ? raw.socialSecurity
+      : base.socialSecurity,
+    rothConversions: Array.isArray(raw.rothConversions) ? raw.rothConversions : [],
+  };
+}
+
 export function useAppState(): AppStateAPI {
   const isDemo = new URLSearchParams(window.location.search).has('demo');
   const [state, setState] = useState<AppState>(DEFAULT_APP_STATE);
   const hydrated = useRef(false);
 
-  // Restore from localStorage on mount (skip in demo mode).
   useEffect(() => {
     if (isDemo) {
       hydrated.current = true;
@@ -26,16 +46,13 @@ export function useAppState(): AppStateAPI {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as AppState & { core?: { hsa?: number } };
+        const parsed = JSON.parse(raw) as Partial<AppState>;
         if (parsed?.core && parsed?.sliders) {
-          if (typeof parsed.core.hsa === 'number') {
-            const { hsa = 0, ...rest } = parsed.core;
-            parsed.core = { ...rest, roth: (rest as CoreConfig).roth + hsa } as CoreConfig;
-          }
-          if (typeof (parsed.core as unknown as Record<string, unknown>).rothIRAPct !== 'number') {
-            (parsed.core as unknown as Record<string, unknown>).rothIRAPct = 1.0;
-          }
-          setState(parsed as AppState);
+          setState({
+            core: migrateCore(parsed.core as Partial<CoreConfig> & Record<string, unknown>),
+            sliders: parsed.sliders as SliderOverrides,
+            scenarios: parsed.scenarios ?? [],
+          });
         }
       }
     } catch {
@@ -45,14 +62,13 @@ export function useAppState(): AppStateAPI {
     }
   }, [isDemo]);
 
-  // Persist to localStorage (skip in demo mode)
   useEffect(() => {
     if (!hydrated.current || isDemo) return;
     const handle = window.setTimeout(() => {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       } catch {
-        // quota exceeded or blocked — nothing we can reasonably do
+        /* quota exceeded or blocked */
       }
     }, SAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);

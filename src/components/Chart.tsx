@@ -70,6 +70,10 @@ export const Chart: React.FC<Props> = ({ data, milestoneAges, retirementAge, onR
             <stop offset="0%" stopColor="#48c774" stopOpacity={0.35} />
             <stop offset="100%" stopColor="#48c774" stopOpacity={0.02} />
           </linearGradient>
+          <linearGradient id="gHSA" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3fc0b0" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="#3fc0b0" stopOpacity={0.02} />
+          </linearGradient>
           <linearGradient id="gTraditional" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#6dd5ed" stopOpacity={0.35} />
             <stop offset="100%" stopColor="#6dd5ed" stopOpacity={0.02} />
@@ -124,6 +128,7 @@ export const Chart: React.FC<Props> = ({ data, milestoneAges, retirementAge, onR
 
         <Area type="monotone" dataKey="taxable"     stackId="1" stroke="#f093fb" fill="url(#gTaxable)"     strokeWidth={1.5} />
         <Area type="monotone" dataKey="roth"        stackId="1" stroke="#48c774" fill="url(#gRoth)"        strokeWidth={1.5} />
+        <Area type="monotone" dataKey="hsa"         stackId="1" stroke="#3fc0b0" fill="url(#gHSA)"         strokeWidth={1.5} />
         <Area type="monotone" dataKey="traditional" stackId="1" stroke="#6dd5ed" fill="url(#gTraditional)" strokeWidth={1.5} />
         <Area type="monotone" dataKey="homeEquity"  stackId="1" stroke="#f7c77d" fill="url(#gHome)"        strokeWidth={1.5} />
       </AreaChart>
@@ -131,7 +136,8 @@ export const Chart: React.FC<Props> = ({ data, milestoneAges, retirementAge, onR
 
     <div className="chart-card__legend">
       <span><span className="chart-card__legend-dot" style={{ background: '#f093fb' }} />Taxable</span>
-      <span><span className="chart-card__legend-dot" style={{ background: '#48c774' }} />Roth + HSA</span>
+      <span><span className="chart-card__legend-dot" style={{ background: '#48c774' }} />Roth</span>
+      <span><span className="chart-card__legend-dot" style={{ background: '#3fc0b0' }} />HSA</span>
       <span><span className="chart-card__legend-dot" style={{ background: '#6dd5ed' }} />Traditional</span>
       <span><span className="chart-card__legend-dot" style={{ background: '#f7c77d' }} />Home</span>
     </div>
@@ -160,8 +166,13 @@ const ChartTooltip: React.FC<TooltipProps> = ({ active, payload }) => {
         <span className="chart-tooltip__label-cyan">Traditional</span><span>{fmt(d.traditional)}</span>
       </div>
       <div className="chart-tooltip__row">
-        <span className="chart-tooltip__label-green">Roth + HSA</span><span>{fmt(d.roth)}</span>
+        <span className="chart-tooltip__label-green">Roth</span><span>{fmt(d.roth)}</span>
       </div>
+      {d.hsa > 0 && (
+        <div className="chart-tooltip__row">
+          <span className="chart-tooltip__label-muted">HSA</span><span>{fmt(d.hsa)}</span>
+        </div>
+      )}
       <div className="chart-tooltip__row">
         <span className="chart-tooltip__label-pink">Taxable</span><span>{fmt(d.taxable)}</span>
       </div>
@@ -187,6 +198,21 @@ const ChartTooltip: React.FC<TooltipProps> = ({ active, payload }) => {
           {d.withdrawalTax != null && d.withdrawalTax > 0 && (
             <div className="chart-tooltip__row">
               <span className="chart-tooltip__label-muted">Withdrawal tax</span><span>{fmt(d.withdrawalTax)}</span>
+            </div>
+          )}
+          {d.socialSecurity != null && d.socialSecurity > 0 && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">Social Security</span><span>{fmt(d.socialSecurity)}</span>
+            </div>
+          )}
+          {d.rmd != null && d.rmd > 0 && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">RMD</span><span>{fmt(d.rmd)}</span>
+            </div>
+          )}
+          {d.rothConversion != null && d.rothConversion > 0 && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">Roth conversion</span><span>{fmt(d.rothConversion)}</span>
             </div>
           )}
         </div>

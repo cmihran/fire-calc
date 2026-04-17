@@ -18,6 +18,22 @@ export interface StateTaxInfo {
   localBrackets?: Record<string, Record<FilingStatus, TaxBracket[]>>;
   ltcgTaxed: boolean;      // true = state taxes LTCG as ordinary income
   topRate: number;          // top marginal rate for LTCG estimate fallback
+
+  /**
+   * Whether Social Security benefits are included in state taxable income.
+   * Omit (default false) in the ~40 states that fully exempt SS.
+   */
+  socialSecurityTaxable?: boolean;
+
+  /**
+   * Flat $ exemption on retirement income (pensions, 401k/IRA withdrawals,
+   * RMDs, Roth conversions) available once age ≥ ageThreshold.
+   * Infinity = fully exempt. Omit = none.
+   */
+  retirementIncomeExclusion?: {
+    exemptAmount: number;
+    ageThreshold: number;
+  };
 }
 
 // Helpers for common patterns
@@ -64,17 +80,17 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
   },
 
   // ── Flat-rate states ───────────────────────────────────────────────────
-  AZ: flat(0.025, 14_600, 29_200),
-  CO: flat(0.044, 0, 0),        // CO uses federal AGI, no separate deduction
-  IL: flat(0.0495, 0, 0),       // IL has no standard deduction
-  IN: flat(0.0305, 0, 0),       // IN has no standard deduction (uses exemptions)
-  KY: flat(0.04, 3_160, 6_320),
-  MA: flat(0.05, 0, 0),         // MA uses exemptions, not standard deduction
-  MI: flat(0.0425, 0, 0),       // MI uses exemptions
-  MS: flat(0.05, 2_300, 4_600),
+  AZ: { ...flat(0.025, 14_600, 29_200), retirementIncomeExclusion: { exemptAmount: 2_500, ageThreshold: 59.5 } },
+  CO: { ...flat(0.044, 0, 0), socialSecurityTaxable: true, retirementIncomeExclusion: { exemptAmount: 24_000, ageThreshold: 55 } },
+  IL: { ...flat(0.0495, 0, 0), retirementIncomeExclusion: { exemptAmount: Infinity, ageThreshold: 59.5 } },
+  IN: flat(0.0305, 0, 0),
+  KY: { ...flat(0.04, 3_160, 6_320), retirementIncomeExclusion: { exemptAmount: 31_110, ageThreshold: 59.5 } },
+  MA: flat(0.05, 0, 0),
+  MI: { ...flat(0.0425, 0, 0), retirementIncomeExclusion: { exemptAmount: Infinity, ageThreshold: 67 } },
+  MS: { ...flat(0.05, 2_300, 4_600), retirementIncomeExclusion: { exemptAmount: Infinity, ageThreshold: 59.5 } },
   NC: flat(0.045, 12_750, 25_500),
-  PA: flat(0.0307, 0, 0),       // PA has no standard deduction
-  UT: flat(0.0465, 0, 0),       // UT has no standard deduction (uses credits)
+  PA: { ...flat(0.0307, 0, 0), retirementIncomeExclusion: { exemptAmount: Infinity, ageThreshold: 59.5 } },
+  UT: { ...flat(0.0465, 0, 0), socialSecurityTaxable: true },
 
   // ── Progressive states ─────────────────────────────────────────────────
 
@@ -112,6 +128,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 2_340, married_filing_jointly: 4_680 },
     ltcgTaxed: true,
     topRate: 0.039,
+    retirementIncomeExclusion: { exemptAmount: 6_000, ageThreshold: 59.5 },
   },
 
   CA: {
@@ -170,6 +187,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 0, married_filing_jointly: 0 },
     ltcgTaxed: true,
     topRate: 0.0699,
+    socialSecurityTaxable: true,
   },
 
   DE: {
@@ -196,6 +214,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 3_250, married_filing_jointly: 6_500 },
     ltcgTaxed: true,
     topRate: 0.066,
+    retirementIncomeExclusion: { exemptAmount: 12_500, ageThreshold: 60 },
   },
 
   GA: {
@@ -220,6 +239,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 12_000, married_filing_jointly: 24_000 },
     ltcgTaxed: true,
     topRate: 0.0549,
+    retirementIncomeExclusion: { exemptAmount: 65_000, ageThreshold: 65 },
   },
 
   HI: {
@@ -290,6 +310,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 2_210, married_filing_jointly: 5_450 },
     ltcgTaxed: true,
     topRate: 0.057,
+    retirementIncomeExclusion: { exemptAmount: Infinity, ageThreshold: 55 },
   },
 
   KS: {
@@ -344,6 +365,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 14_600, married_filing_jointly: 29_200 },
     ltcgTaxed: true,
     topRate: 0.0715,
+    retirementIncomeExclusion: { exemptAmount: 30_000, ageThreshold: 59.5 },
   },
 
   MD: {
@@ -372,6 +394,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 2_550, married_filing_jointly: 5_150 },
     ltcgTaxed: true,
     topRate: 0.0575,
+    retirementIncomeExclusion: { exemptAmount: 34_300, ageThreshold: 65 },
   },
 
   MN: {
@@ -392,6 +415,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 14_575, married_filing_jointly: 29_150 },
     ltcgTaxed: true,
     topRate: 0.0985,
+    socialSecurityTaxable: true,
   },
 
   MO: {
@@ -436,6 +460,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 14_600, married_filing_jointly: 29_200 },
     ltcgTaxed: true,
     topRate: 0.059,
+    socialSecurityTaxable: true,
   },
 
   NE: {
@@ -483,6 +508,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 0, married_filing_jointly: 0 },
     ltcgTaxed: true,
     topRate: 0.1075,
+    retirementIncomeExclusion: { exemptAmount: 75_000, ageThreshold: 62 },
   },
 
   NM: {
@@ -559,6 +585,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 8_000, married_filing_jointly: 16_050 },
     ltcgTaxed: true,
     topRate: 0.109,
+    retirementIncomeExclusion: { exemptAmount: 20_000, ageThreshold: 59.5 },
   },
 
   ND: {
@@ -655,6 +682,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 10_550, married_filing_jointly: 21_150 },
     ltcgTaxed: true,
     topRate: 0.0599,
+    socialSecurityTaxable: true,
   },
 
   SC: {
@@ -673,6 +701,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 14_600, married_filing_jointly: 29_200 },
     ltcgTaxed: true,
     topRate: 0.064,
+    retirementIncomeExclusion: { exemptAmount: 15_000, ageThreshold: 65 },
   },
 
   VT: {
@@ -693,6 +722,7 @@ export const STATE_TAX_DATA: Record<string, StateTaxInfo> = {
     stdDeduction: { single: 7_000, married_filing_jointly: 14_600 },
     ltcgTaxed: true,
     topRate: 0.0875,
+    socialSecurityTaxable: true,
   },
 
   VA: {
