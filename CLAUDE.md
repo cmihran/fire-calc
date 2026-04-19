@@ -24,7 +24,7 @@ Personal tool for one user — not a product. Full simulation scope is accepted;
 
 ## Architecture
 
-**Data flow:** `CoreConfig + Assumptions + SliderOverrides` → `simulate()` → `Tick[]` → Chart/MilestoneCards/YearTable
+**Data flow:** `Scenario[]` (each `{ core, sliders }`) → per-scenario `simulate(core, ASSUMPTIONS, sliders)` → `Tick[]` per scenario → Chart (overlay over all `compareIds`) / MilestoneCards / YearTable / hero (active scenario only). `App.tsx` memoizes each scenario's ticks in a `simCache` ref keyed by id so editing one scenario doesn't re-simulate the others.
 
 - **`src/config/quickConfig.ts`** — `YOU` (CoreConfig defaults) + `ASSUMPTIONS`. Exports `DEFAULT_APP_STATE`. Has `import.meta.hot.invalidate()` so editing triggers full HMR reload (useState otherwise keeps stale defaults).
 - **`src/engine/`** — pure functions, no React.
@@ -33,11 +33,21 @@ Personal tool for one user — not a product. Full simulation scope is accepted;
   - `tax.ts` — `calcTax(sources: IncomeSources, …)` orchestrates federal ordinary, federal LTCG stacking, NIIT, FICA (HSA payroll reduces FICA), state + city, state retirement-income exclusion. `grossUpTraditionalWithdrawal()` uses marginal-tax iteration (converges in 12 steps).
   - `withdrawals.ts` — `drawDown()` waterfall: Taxable (LTCG on gain portion) → Traditional (ordinary + 10% penalty if <59.5) → Roth → HSA (65+ only). Also `computeRMD()` and `computeRothConversion()`.
   - `simulate.ts` — annual-tick loop. Builds `IncomeSources` per year from comp + portfolio yield + SS + RMD + conversion; computes tax; waterfalls contributions; drawdown if cash-negative. HSA is a distinct bucket with payroll-deductible contributions.
-- **`src/components/`** — React presentation. Sidebar dashboard: Settings (balances, contributions, SS, Roth conversions) + Controls (rate sliders) in a sticky left sidebar, Chart + MilestoneCards + YearTable in the main area.
+- **`src/components/`** — React presentation. Sidebar dashboard: ScenarioPicker (list / activate / rename / duplicate / delete / color / compare toggle) + Settings (balances, contributions, SS, Roth conversions) + Controls (rate sliders) in a sticky left sidebar, Chart + MilestoneCards + YearTable in the main area. `Settings` and `Controls` are scenario-agnostic — they take `core`/`sliders` + `onChange`; `App.tsx` wires their `onChange` to `setActiveCore`/`setActiveSliders`.
 
 **State:** `useAppState` holds `AppState` (`scenarios[]`, `activeScenarioId`, `compareIds`). Persists to localStorage (`networth-predict:v1`), debounced 200ms. Includes `migrateCore()` + `migrateAppState()` to backfill fields added after a user's localStorage was written, and to wrap the old v1 `{core, sliders}` shape into a single Baseline scenario. URL params (both bypass localStorage): `?demo` loads `DEMO_APP_STATE` with three example scenarios (Baseline / FIRE @ 50 / Big Tech CA) for showing off comparison; `?fresh` loads `DEFAULT_APP_STATE` with a single Baseline — used by tests that need a known clean state.
 
-**Types:** All in `src/types/index.ts`. Key shapes: `CoreConfig`, `Assumptions`, `SliderOverrides`, `IncomeSources` (structured income breakdown — all tax calcs consume this), `TaxResult`, `Tick`, `RothConversionPlan`, `SocialSecurityPlan`.
+**Types:** All in `src/types/index.ts`. Key shapes: `AppState` (`{ scenarios, activeScenarioId, compareIds }`), `Scenario` (`{ id, name, color, core, sliders }`), `CoreConfig`, `Assumptions`, `SliderOverrides`, `IncomeSources` (structured income breakdown — all tax calcs consume this), `TaxResult`, `Tick`, `RothConversionPlan`, `SocialSecurityPlan`.
+
+## Scenarios
+
+The app compares named what-if configurations (e.g. "FIRE @ 50" vs "Big Tech CA"). One scenario is active at a time — Settings/Controls/MilestoneCards/YearTable/hero all operate on it. `compareIds` is the subset overlaid on the chart (always includes the active scenario — it cannot be toggled off).
+
+- **Editing:** never reach for `state.core` or `state.sliders` — they don't exist at `AppState` level. Use `activeScenario.core`, or target a specific scenario via its id. Mutations go through `useAppState` setters (`setActiveCore`, `setActiveSliders`, `addScenario`, `duplicateActive`, `deleteScenario`, `renameScenario`, `setScenarioColor`, `toggleCompare`) — these keep `compareIds` and `activeScenarioId` consistent.
+- **New scenarios:** call `addScenario()` or `duplicateActive()` rather than hand-rolling — they generate ids via `crypto.randomUUID()` and assign distinct colors via `pickNextColor(existing)` over `SCENARIO_COLORS` (quickConfig.ts).
+- **Chart modes** (`src/components/Chart.tsx`): `compareIds.length === 1` renders the stacked taxable/roth/hsa/traditional/home breakdown (single-scenario allocation view). `compareIds.length ≥ 2` swaps to one unstacked net-worth `<Line>` per compared scenario, colored by `scenario.color`, active drawn solid/thicker, others dashed. The draggable retirement-age reference line always mutates the active scenario's `retirementAge`.
+- **Simulation cost:** `simulate()` is pure and O(n_years); running ~10 scenarios is sub-10ms. Per-scenario memoization in `App.tsx#simCache` keys by the scenario's `core`/`sliders` object identity, so use immutable updates (spread) — in-place mutation would silently defeat the cache.
+- **Persistence:** `migrateAppState()` in `useAppState.ts` handles both the v1 `{core, sliders}` shape (wraps into a single Baseline scenario) and the current multi-scenario shape. Each scenario's `core` is run through `migrateCore()` on hydrate so additive field migrations still work per-scenario.
 
 ## Tax engine coverage
 
