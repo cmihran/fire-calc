@@ -1,6 +1,55 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { CoreConfig, Assumptions, StateCode, RothConversionPlan } from '../types';
+import type {
+  CoreConfig, Assumptions, StateCode, RothConversionPlan,
+  HomeHolding, HomeEvent,
+} from '../types';
 import { ALL_STATE_CODES, STATE_NAMES, STATE_TAX_DATA } from '../engine/stateTaxData';
+
+function makeEventId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return `he-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Sensible defaults for a new "buy" event — editable in the UI. */
+function defaultBuyEvent(atAge: number): Extract<HomeEvent, { kind: 'buy' }> {
+  return {
+    id: makeEventId(),
+    kind: 'buy',
+    atAge,
+    purchasePrice: 500_000,
+    downPaymentPct: 0.2,
+    mortgageRate: 0.065,
+    mortgageYears: 30,
+    closingCostPct: 0.03,
+    propertyTaxRate: 0.012,
+    insuranceRate: 0.004,
+    maintenanceRate: 0.01,
+    hoaAnnual: 0,
+    appreciationRate: 0.035,
+    primaryResidence: true,
+  };
+}
+
+function defaultSellEvent(atAge: number): Extract<HomeEvent, { kind: 'sell' }> {
+  return { id: makeEventId(), kind: 'sell', atAge, sellingCostPct: 0.07 };
+}
+
+function defaultHomeHolding(currentAge: number): HomeHolding {
+  return {
+    currentValue: 500_000,
+    mortgageBalance: 300_000,
+    mortgageRate: 0.055,
+    mortgageYearsRemaining: 25,
+    costBasis: 400_000,
+    ownershipStartAge: Math.max(18, currentAge - 3),
+    propertyTaxRate: 0.012,
+    insuranceRate: 0.004,
+    maintenanceRate: 0.01,
+    hoaAnnual: 0,
+    appreciationRate: 0.035,
+    primaryResidence: true,
+  };
+}
 
 const ROTH_PHASEOUT = {
   single: { floor: 150_000, ceiling: 165_000 },
@@ -182,6 +231,163 @@ const RothConversionEditor: React.FC<RothConversionEditorProps> = ({ plans, onCh
   );
 };
 
+interface HomeHoldingEditorProps {
+  holding: HomeHolding | null;
+  currentAge: number;
+  onChange: (h: HomeHolding | null) => void;
+}
+
+const HomeHoldingEditor: React.FC<HomeHoldingEditorProps> = ({ holding, currentAge, onChange }) => {
+  if (!holding) {
+    return (
+      <button
+        type="button"
+        className="roth-conversions__add"
+        onClick={() => onChange(defaultHomeHolding(currentAge))}
+      >
+        + I currently own a home
+      </button>
+    );
+  }
+  const patch = (p: Partial<HomeHolding>) => onChange({ ...holding, ...p });
+  return (
+    <div className="roth-conversions">
+      <div className="settings__grid settings__grid--2col">
+        <Field label="Market value" value={holding.currentValue} step={10_000} min={0} prefix="$"
+          onChange={(v) => patch({ currentValue: v })} />
+        <Field label="Mortgage bal" value={holding.mortgageBalance} step={10_000} min={0} prefix="$"
+          onChange={(v) => patch({ mortgageBalance: v })} />
+        <Field label="Rate %" value={+(holding.mortgageRate * 100).toFixed(3)} step={0.125} min={0}
+          onChange={(v) => patch({ mortgageRate: v / 100 })} />
+        <Field label="Yrs left" value={holding.mortgageYearsRemaining} step={1} min={0} max={40}
+          onChange={(v) => patch({ mortgageYearsRemaining: v })} />
+        <Field label="Cost basis" value={holding.costBasis} step={10_000} min={0} prefix="$"
+          onChange={(v) => patch({ costBasis: v })} />
+        <Field label="Owned since age" value={holding.ownershipStartAge} step={1} min={18} max={100}
+          onChange={(v) => patch({ ownershipStartAge: v })} />
+        <Field label="Property tax %" value={+(holding.propertyTaxRate * 100).toFixed(3)} step={0.05} min={0}
+          onChange={(v) => patch({ propertyTaxRate: v / 100 })} />
+        <Field label="Insurance %" value={+(holding.insuranceRate * 100).toFixed(3)} step={0.05} min={0}
+          onChange={(v) => patch({ insuranceRate: v / 100 })} />
+        <Field label="Maintenance %" value={+(holding.maintenanceRate * 100).toFixed(3)} step={0.1} min={0}
+          onChange={(v) => patch({ maintenanceRate: v / 100 })} />
+        <Field label="HOA / yr" value={holding.hoaAnnual} step={100} min={0} prefix="$"
+          onChange={(v) => patch({ hoaAnnual: v })} />
+        <Field label="Appreciation %" value={+(holding.appreciationRate * 100).toFixed(3)} step={0.1} min={-5}
+          onChange={(v) => patch({ appreciationRate: v / 100 })} />
+      </div>
+      <label className="roth-conversions__field">
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          <input
+            type="checkbox"
+            checked={holding.primaryResidence}
+            onChange={(e) => patch({ primaryResidence: e.target.checked })}
+          />
+          Primary residence (unlocks §121 exclusion on sale)
+        </span>
+      </label>
+      <button type="button" className="roth-conversions__remove settings__inline-btn"
+        onClick={() => onChange(null)}>
+        Remove home
+      </button>
+    </div>
+  );
+};
+
+interface HomeEventsEditorProps {
+  events: HomeEvent[];
+  currentAge: number;
+  onChange: (events: HomeEvent[]) => void;
+}
+
+const HomeEventsEditor: React.FC<HomeEventsEditorProps> = ({ events, currentAge, onChange }) => {
+  const addBuy = () => onChange([...events, defaultBuyEvent(Math.max(currentAge + 1, 35))]);
+  const addSell = () => onChange([...events, defaultSellEvent(Math.max(currentAge + 5, 60))]);
+  const remove = (id: string) => onChange(events.filter((e) => e.id !== id));
+  const update = (id: string, patch: Partial<HomeEvent>) => {
+    onChange(events.map((e) => {
+      if (e.id !== id) return e;
+      // Preserve discriminated union by typing patch against the specific variant.
+      return { ...e, ...patch } as HomeEvent;
+    }));
+  };
+  return (
+    <div className="roth-conversions">
+      {events.map((e) => (
+        <div key={e.id} className="roth-conversions" style={{ borderTop: '1px solid var(--border-soft)', paddingTop: '0.4rem' }}>
+          <div className="roth-conversions__row">
+            <label className="roth-conversions__field">
+              <span>Kind</span>
+              <select
+                value={e.kind}
+                onChange={(ev) => {
+                  const kind = ev.target.value as 'buy' | 'sell';
+                  onChange(events.map((x) => x.id === e.id
+                    ? (kind === 'buy' ? defaultBuyEvent(e.atAge) : defaultSellEvent(e.atAge))
+                    : x));
+                }}
+              >
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+              </select>
+            </label>
+            <label className="roth-conversions__field">
+              <span>At age</span>
+              <input type="number" min={18} max={100} value={e.atAge}
+                onChange={(ev) => update(e.id, { atAge: +ev.target.value })} />
+            </label>
+            <div />
+            <button type="button" className="roth-conversions__remove" onClick={() => remove(e.id)}>×</button>
+          </div>
+          {e.kind === 'buy' ? (
+            <div className="settings__grid settings__grid--2col">
+              <Field label="Price" value={e.purchasePrice} step={10_000} min={0} prefix="$"
+                onChange={(v) => update(e.id, { purchasePrice: v })} />
+              <Field label="Down %" value={+(e.downPaymentPct * 100).toFixed(2)} step={1} min={0} max={100}
+                onChange={(v) => update(e.id, { downPaymentPct: v / 100 })} />
+              <Field label="Rate %" value={+(e.mortgageRate * 100).toFixed(3)} step={0.125} min={0}
+                onChange={(v) => update(e.id, { mortgageRate: v / 100 })} />
+              <Field label="Term (yrs)" value={e.mortgageYears} step={5} min={1} max={40}
+                onChange={(v) => update(e.id, { mortgageYears: v })} />
+              <Field label="Closing %" value={+(e.closingCostPct * 100).toFixed(3)} step={0.25} min={0}
+                onChange={(v) => update(e.id, { closingCostPct: v / 100 })} />
+              <Field label="Property tax %" value={+(e.propertyTaxRate * 100).toFixed(3)} step={0.05} min={0}
+                onChange={(v) => update(e.id, { propertyTaxRate: v / 100 })} />
+              <Field label="Insurance %" value={+(e.insuranceRate * 100).toFixed(3)} step={0.05} min={0}
+                onChange={(v) => update(e.id, { insuranceRate: v / 100 })} />
+              <Field label="Maintenance %" value={+(e.maintenanceRate * 100).toFixed(3)} step={0.1} min={0}
+                onChange={(v) => update(e.id, { maintenanceRate: v / 100 })} />
+              <Field label="HOA / yr" value={e.hoaAnnual} step={100} min={0} prefix="$"
+                onChange={(v) => update(e.id, { hoaAnnual: v })} />
+              <Field label="Appreciation %" value={+(e.appreciationRate * 100).toFixed(3)} step={0.1} min={-5}
+                onChange={(v) => update(e.id, { appreciationRate: v / 100 })} />
+              <label className="roth-conversions__field roth-conversions__field--wide">
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={e.primaryResidence}
+                    onChange={(ev) => update(e.id, { primaryResidence: ev.target.checked })}
+                  />
+                  Primary residence
+                </span>
+              </label>
+            </div>
+          ) : (
+            <div className="settings__grid settings__grid--2col">
+              <Field label="Selling cost %" value={+(e.sellingCostPct * 100).toFixed(3)} step={0.25} min={0}
+                onChange={(v) => update(e.id, { sellingCostPct: v / 100 })} />
+            </div>
+          )}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <button type="button" className="roth-conversions__add" onClick={addBuy}>+ Buy event</button>
+        <button type="button" className="roth-conversions__add" onClick={addSell}>+ Sell event</button>
+      </div>
+    </div>
+  );
+};
+
 interface Props {
   core: CoreConfig;
   assumptions: Assumptions;
@@ -329,6 +535,24 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
         <RothConversionEditor
           plans={core.rothConversions}
           onChange={(plans) => set('rothConversions', plans)}
+        />
+      </div>
+
+      <div className="settings__group">
+        <div className="settings__group-label">Current home</div>
+        <HomeHoldingEditor
+          holding={core.currentHome}
+          currentAge={core.age}
+          onChange={(h) => set('currentHome', h)}
+        />
+      </div>
+
+      <div className="settings__group">
+        <div className="settings__group-label">Planned home events</div>
+        <HomeEventsEditor
+          events={core.homeEvents}
+          currentAge={core.age}
+          onChange={(evs) => set('homeEvents', evs)}
         />
       </div>
     </div>

@@ -38,6 +38,8 @@ export function deflateTicks(ticks: Tick[], startAge: number, inflation: number)
       taxable: Math.round(t.taxable / factor),
       taxableBasis: Math.round(t.taxableBasis / factor),
       homeEquity: Math.round(t.homeEquity / factor),
+      homeValue: Math.round(t.homeValue / factor),
+      mortgageBalance: Math.round(t.mortgageBalance / factor),
       otherDebt: Math.round(t.otherDebt / factor),
       netWorth: Math.round(t.netWorth / factor),
       comp: div(t.comp),
@@ -48,7 +50,12 @@ export function deflateTicks(ticks: Tick[], startAge: number, inflation: number)
       socialSecurity: div(t.socialSecurity),
       rmd: div(t.rmd),
       rothConversion: div(t.rothConversion),
-      // taxRate is a percentage — don't deflate
+      mortgagePayment: div(t.mortgagePayment),
+      mortgageInterest: div(t.mortgageInterest),
+      propertyTax: div(t.propertyTax),
+      homeCarryCost: div(t.homeCarryCost),
+      homeSaleGain: div(t.homeSaleGain),
+      // taxRate is a percentage — don't deflate; homeEventLabel is a string
     };
   });
 }

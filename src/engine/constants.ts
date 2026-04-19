@@ -71,6 +71,23 @@ export const NIIT_THRESHOLD: Record<FilingStatus, number> = {
   married_filing_jointly: 250_000,
 };
 
+// ─── §121 primary-residence exclusion (frozen in statute since 1997) ─────
+export const SECTION_121_EXCLUSION: Record<FilingStatus, number> = {
+  single: 250_000,
+  married_filing_jointly: 500_000,
+};
+
+// ─── SALT deduction cap (TCJA: $10k, same for both filing statuses) ──────
+// OBBBA temporarily raised this for MFJ at moderate incomes 2025–2029, then
+// reverts. Keep the $10k floor as a conservative default for long projections.
+export const SALT_CAP: Record<FilingStatus, number> = {
+  single: 10_000,
+  married_filing_jointly: 10_000,
+};
+
+// ─── Mortgage interest deduction principal cap (TCJA: $750k post-2017) ───
+export const MORTGAGE_INTEREST_PRINCIPAL_CAP = 750_000;
+
 // SS provisional-income thresholds — frozen since 1983 and again since 1993.
 export const SS_PROVISIONAL_BASE: Record<FilingStatus, number> = {
   single: 25_000,

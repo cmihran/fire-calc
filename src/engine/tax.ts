@@ -7,6 +7,7 @@ import {
   SS_RATE, MEDICARE_RATE, ADDITIONAL_MEDICARE_RATE, ADDITIONAL_MEDICARE_THRESHOLD,
   NIIT_RATE, NIIT_THRESHOLD,
   SS_PROVISIONAL_BASE, SS_PROVISIONAL_ADJUSTED,
+  SALT_CAP,
 } from './constants';
 
 // ─── Bracket math ────────────────────────────────────────────────────────
@@ -53,7 +54,20 @@ function ordinaryBeforeSS(s: IncomeSources): number {
 
 /** Investment income for NIIT base (not SS, not wages, not retirement distributions). */
 function niitIncome(s: IncomeSources): number {
-  return s.qualifiedDividends + s.ordinaryDividends + s.interest + s.ltcg + s.stcg + s.rental;
+  return s.qualifiedDividends + s.ordinaryDividends + s.interest + s.ltcg + s.stcg + s.rental + s.homeSaleGain;
+}
+
+/**
+ * Itemized deduction vs. standard: pick the bigger. SALT is capped at the
+ * statutory SALT cap, and state income tax paid counts against the same cap
+ * as property tax. Mortgage interest is fully deductible (we ignore the
+ * $750k principal cap as a simplification).
+ */
+function itemizedDeduction(
+  s: IncomeSources, stateIncomeTax: number, filingStatus: FilingStatus,
+): number {
+  const salt = Math.min(SALT_CAP[filingStatus], stateIncomeTax + s.propertyTaxPaid);
+  return salt + s.mortgageInterestPaid;
 }
 
 // ─── Social Security taxation (federal) ──────────────────────────────────
@@ -199,53 +213,58 @@ export function calcTax(args: TaxInputs): TaxResult {
   // Federal SS taxability
   const ssTaxableFed = socialSecurityTaxable(sources, filingStatus);
 
-  // Federal ordinary base (before deduction)
+  // Federal ordinary base (pre-deduction); LTCG/QD/homeSaleGain sit in the
+  // preferential stack, not here.
   const ordinaryBase = ordinaryBeforeSS(sources) + ssTaxableFed - pretax401k - hsaPayrollContribution;
+
+  // ─── State tax (computed first; needed for federal SALT deduction) ─────
+  const stateInfo = STATE_TAX_DATA[state];
+  const stateStd = stateInfo?.stdDeduction[filingStatus] ?? 0;
+  const stateSSPortion = stateSSIncluded(state, ssTaxableFed);
+  const stateRetirementExempt = stateRetirementExclusion(sources, age, state);
+  const stateLTCGPortion = stateInfo?.ltcgTaxed ? sources.ltcg + sources.qualifiedDividends + sources.homeSaleGain : 0;
+
+  const stateOrdinaryBase =
+    (ordinaryBase - ssTaxableFed)
+    + stateSSPortion
+    + stateLTCGPortion
+    - stateRetirementExempt;
+  const stateTaxable = Math.max(0, stateOrdinaryBase - stateStd);
+  const stateBrackets = stateInfo?.brackets[filingStatus] ?? [];
+  const stateTax = calcBracketTax(stateTaxable, stateBrackets);
+
+  let localTax = 0;
+  if (city && stateInfo?.localBrackets?.[city]) {
+    localTax = calcBracketTax(stateTaxable, stateInfo.localBrackets[city][filingStatus]);
+  }
+
+  // ─── Federal deduction: max(std, itemized) ─────────────────────────────
   const fedStd = yc.federalStdDeduction[filingStatus];
-  const fedOrdinaryTaxable = Math.max(0, ordinaryBase - fedStd);
+  const itemized = itemizedDeduction(sources, stateTax + localTax, filingStatus);
+  const fedDeduction = Math.max(fedStd, itemized);
 
+  // LTCG + qualified dividends + §121-adjusted home sale gain stack on top.
+  const ltcgAndPreferential = Math.max(
+    0, sources.ltcg + sources.qualifiedDividends + sources.homeSaleGain,
+  );
+
+  const fedOrdinaryTaxable = Math.max(0, ordinaryBase - fedDeduction);
   const federalOrdinary = calcBracketTax(fedOrdinaryTaxable, yc.federalBrackets[filingStatus]);
-
-  // LTCG + qualified dividends stack on top
-  const ltcgAndQD = Math.max(0, sources.ltcg + sources.qualifiedDividends);
   const federalLTCG = calcFederalLTCGTax(
-    fedOrdinaryTaxable, ltcgAndQD, yc.ltcgBrackets[filingStatus],
+    fedOrdinaryTaxable, ltcgAndPreferential, yc.ltcgBrackets[filingStatus],
   );
   const federal = federalOrdinary + federalLTCG;
 
-  // NIIT on investment income
-  const magi = fedOrdinaryTaxable + ltcgAndQD;
+  // NIIT on investment income (includes homeSaleGain)
+  const magi = fedOrdinaryTaxable + ltcgAndPreferential;
   const investmentIncome = niitIncome(sources);
   const niit = calcNIIT(magi, investmentIncome, filingStatus);
 
   // FICA (HSA payroll contribution reduces FICA wages)
   const fica = calcFICA(sources, hsaPayrollContribution, filingStatus, yc);
 
-  // State
-  const stateInfo = STATE_TAX_DATA[state];
-  const stateStd = stateInfo?.stdDeduction[filingStatus] ?? 0;
-  const stateSSPortion = stateSSIncluded(state, ssTaxableFed);
-  const stateRetirementExempt = stateRetirementExclusion(sources, age, state);
-  const stateLTCGPortion = stateInfo?.ltcgTaxed ? sources.ltcg + sources.qualifiedDividends : 0;
-
-  // State ordinary base: start with federal ordinary base but swap SS portion, plus state LTCG if taxed
-  const stateOrdinaryBase =
-    (ordinaryBase - ssTaxableFed)          // remove federal SS inclusion
-    + stateSSPortion                        // add state SS inclusion (usually 0)
-    + stateLTCGPortion                      // state may tax LTCG as ordinary
-    - stateRetirementExempt;                // state retirement income exclusion
-  const stateTaxable = Math.max(0, stateOrdinaryBase - stateStd);
-  const stateBrackets = stateInfo?.brackets[filingStatus] ?? [];
-  const stateTax = calcBracketTax(stateTaxable, stateBrackets);
-
-  // City/local — uses same base as state (simplification)
-  let localTax = 0;
-  if (city && stateInfo?.localBrackets?.[city]) {
-    localTax = calcBracketTax(stateTaxable, stateInfo.localBrackets[city][filingStatus]);
-  }
-
   const total = federal + stateTax + localTax + fica + niit;
-  const grossIncomeForRate = ordinaryBeforeSS(sources) + sources.socialSecurity + ltcgAndQD;
+  const grossIncomeForRate = ordinaryBeforeSS(sources) + sources.socialSecurity + ltcgAndPreferential;
   return {
     federalOrdinary,
     federalLTCG,
