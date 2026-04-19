@@ -175,6 +175,214 @@ body {
 }
 
 
+/* ---------- Hero scenario label ---------- */
+
+.main__hero-scenario {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.357rem;
+  font-size: 0.714rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  opacity: 0.9;
+  padding-right: 0.714rem;
+  border-right: 1px solid var(--border-softer);
+  margin-right: 0.214rem;
+}
+
+.main__hero-scenario-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ---------- Scenario picker ---------- */
+
+.scenarios {
+  padding: 0.857rem 0;
+  border-bottom: 1px solid var(--border-softer);
+}
+
+.scenarios__group-label {
+  font-size: 0.643rem;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  opacity: 0.3;
+  margin-bottom: 0.714rem;
+}
+
+.scenarios__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.286rem;
+}
+
+.scenario-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: 0.429rem;
+  padding: 0.357rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.scenario-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.scenario-row--active {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.scenario-row__swatch {
+  width: 0.857rem;
+  height: 0.857rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.scenario-row__compare {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.scenario-row__compare input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.scenario-row__compare input:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.scenario-row__name {
+  background: none;
+  border: none;
+  color: var(--text-base);
+  font-family: var(--mono-stack);
+  font-size: 0.786rem;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-row__name:hover {
+  opacity: 0.8;
+}
+
+.scenario-row__rename {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  color: var(--text-base);
+  font-family: var(--mono-stack);
+  font-size: 0.786rem;
+  padding: 0.143rem 0.357rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.scenario-row__rename:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.scenario-row__actions {
+  display: flex;
+  gap: 0.143rem;
+}
+
+.scenario-row__icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-base);
+  opacity: 0.35;
+  font-size: 0.857rem;
+  cursor: pointer;
+  padding: 0 0.214rem;
+  line-height: 1;
+  transition: opacity 120ms ease;
+}
+
+.scenario-row__icon-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.scenario-row__icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.15;
+}
+
+.scenario-row__icon-btn--danger:hover:not(:disabled) {
+  color: #f7768e;
+  opacity: 1;
+}
+
+.scenario-row__palette {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.286rem;
+  padding-top: 0.357rem;
+  flex-wrap: wrap;
+}
+
+.scenario-row__palette-swatch {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  padding: 0;
+}
+
+.scenario-row__palette-swatch.is-selected {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
+}
+
+.scenarios__footer {
+  display: flex;
+  gap: 0.357rem;
+  margin-top: 0.571rem;
+}
+
+.scenarios__btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  color: var(--text-base);
+  font-family: var(--mono-stack);
+  font-size: 0.714rem;
+  letter-spacing: 0.3px;
+  padding: 0.357rem 0.714rem;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.scenarios__btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 /* ---------- Settings (sidebar inputs) ---------- */
 
 .settings {

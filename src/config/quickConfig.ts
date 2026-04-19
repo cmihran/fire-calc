@@ -70,12 +70,38 @@ export const DEFAULT_SLIDERS: SliderOverrides = {
 };
 
 // ============================================================================
-// Default scenarios (empty = baseline only)
+// Scenario palette — distinct hues for chart overlay + picker swatches
 // ============================================================================
-export const DEFAULT_SCENARIOS: Scenario[] = [];
+export const SCENARIO_COLORS: string[] = [
+  '#7aa2f7', // blue
+  '#f7768e', // rose
+  '#9ece6a', // lime
+  '#e0af68', // amber
+  '#bb9af7', // violet
+  '#2ac3de', // cyan
+  '#ff9e64', // orange
+  '#c0caf5', // pearl
+];
 
-export const DEFAULT_APP_STATE: AppState = {
+export function pickNextColor(existing: string[]): string {
+  const unused = SCENARIO_COLORS.find((c) => !existing.includes(c));
+  if (unused) return unused;
+  return SCENARIO_COLORS[existing.length % SCENARIO_COLORS.length];
+}
+
+// ============================================================================
+// Default app state — single "Baseline" scenario
+// ============================================================================
+export const BASELINE_SCENARIO: Scenario = {
+  id: 'baseline',
+  name: 'Baseline',
+  color: SCENARIO_COLORS[0],
   core: YOU,
   sliders: DEFAULT_SLIDERS,
-  scenarios: DEFAULT_SCENARIOS,
+};
+
+export const DEFAULT_APP_STATE: AppState = {
+  scenarios: [BASELINE_SCENARIO],
+  activeScenarioId: BASELINE_SCENARIO.id,
+  compareIds: [BASELINE_SCENARIO.id],
 };

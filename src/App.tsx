@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useAppState } from './hooks/useAppState';
 import { simulate } from './engine/simulate';
 import { ASSUMPTIONS } from './config/quickConfig';
@@ -7,36 +7,90 @@ import { Settings } from './components/Settings';
 import { Chart } from './components/Chart';
 import { MilestoneCards } from './components/MilestoneCards';
 import { YearTable } from './components/YearTable';
+import { ScenarioPicker } from './components/ScenarioPicker';
 import { fmt, deflateTicks } from './utils/format';
+import type { Scenario, Tick } from './types';
 import './styles/app.css';
 
 type DisplayMode = 'nominal' | 'real';
 
 const MILESTONE_AGES = [30, 35, 40, 45, 50, 55, 60, 65, 70];
 
+interface ScenarioSeries {
+  scenario: Scenario;
+  ticks: Tick[];
+}
+
 export const App: React.FC = () => {
-  const { state, setCore, setSliders, resetToDefaults } = useAppState();
+  const {
+    state,
+    activeScenario,
+    setActiveScenarioId,
+    setActiveCore,
+    setActiveSliders,
+    addScenario,
+    duplicateActive,
+    deleteScenario,
+    renameScenario,
+    setScenarioColor,
+    toggleCompare,
+    resetToDefaults,
+  } = useAppState();
   const [displayMode, setDisplayMode] = useState<DisplayMode>('nominal');
 
-  const rawTicks = useMemo(
-    () => simulate(state.core, ASSUMPTIONS, state.sliders),
-    [state.core, state.sliders],
+  // Per-scenario simulation cache — only re-run when a scenario's own
+  // core/sliders change. Avoids re-simulating all scenarios on any edit.
+  const simCache = useRef<Map<string, { core: Scenario['core']; sliders: Scenario['sliders']; ticks: Tick[] }>>(
+    new Map(),
   );
 
-  const ticks = useMemo(
-    () => (displayMode === 'real'
-      ? deflateTicks(rawTicks, state.core.age, ASSUMPTIONS.inflation)
-      : rawTicks),
-    [rawTicks, displayMode, state.core.age],
+  const allSeries: ScenarioSeries[] = useMemo(() => {
+    const result: ScenarioSeries[] = [];
+    for (const s of state.scenarios) {
+      const cached = simCache.current.get(s.id);
+      if (cached && cached.core === s.core && cached.sliders === s.sliders) {
+        result.push({ scenario: s, ticks: cached.ticks });
+      } else {
+        const ticks = simulate(s.core, ASSUMPTIONS, s.sliders);
+        simCache.current.set(s.id, { core: s.core, sliders: s.sliders, ticks });
+        result.push({ scenario: s, ticks });
+      }
+    }
+    // Drop cache entries for deleted scenarios.
+    for (const id of Array.from(simCache.current.keys())) {
+      if (!state.scenarios.some((s) => s.id === id)) simCache.current.delete(id);
+    }
+    return result;
+  }, [state.scenarios]);
+
+  const comparedSeries = useMemo(
+    () => allSeries.filter((s) => state.compareIds.includes(s.scenario.id)),
+    [allSeries, state.compareIds],
   );
+
+  // Apply "today's $" deflation per-scenario, anchored to that scenario's own
+  // starting age so each timeline deflates independently.
+  const displayedSeries: ScenarioSeries[] = useMemo(
+    () => comparedSeries.map(({ scenario, ticks }) => ({
+      scenario,
+      ticks: displayMode === 'real'
+        ? deflateTicks(ticks, scenario.core.age, ASSUMPTIONS.inflation)
+        : ticks,
+    })),
+    [comparedSeries, displayMode],
+  );
+
+  const activeSeries = displayedSeries.find((s) => s.scenario.id === activeScenario.id)
+    ?? displayedSeries[0];
+  const activeTicks = activeSeries.ticks;
 
   const milestoneAges = MILESTONE_AGES.filter(
-    (a) => a >= state.core.age && a <= state.core.endAge,
+    (a) => a >= activeScenario.core.age && a <= activeScenario.core.endAge,
   );
 
-  const startTick = ticks[0];
-  const retireTick = ticks.find((t) => t.age === state.core.retirementAge);
-  const finalTick = ticks[ticks.length - 1];
+  const startTick = activeTicks[0];
+  const retireTick = activeTicks.find((t) => t.age === activeScenario.core.retirementAge);
+  const finalTick = activeTicks[activeTicks.length - 1];
 
   return (
     <div className="app">
@@ -58,13 +112,26 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          <Settings core={state.core} assumptions={ASSUMPTIONS} onChange={setCore} />
+          <ScenarioPicker
+            scenarios={state.scenarios}
+            activeId={state.activeScenarioId}
+            compareIds={state.compareIds}
+            onActivate={setActiveScenarioId}
+            onToggleCompare={toggleCompare}
+            onAdd={addScenario}
+            onDuplicate={duplicateActive}
+            onDelete={deleteScenario}
+            onRename={renameScenario}
+            onColorChange={setScenarioColor}
+          />
 
-          <Controls sliders={state.sliders} onChange={setSliders} />
+          <Settings core={activeScenario.core} assumptions={ASSUMPTIONS} onChange={setActiveCore} />
+
+          <Controls sliders={activeScenario.sliders} onChange={setActiveSliders} />
 
           <div className="sidebar__assumptions">
-            Federal + {state.core.stateOfResidence}
-            {state.core.cityOfResidence ? ` (${state.core.cityOfResidence})` : ''} tax brackets + FICA + NIIT.
+            Federal + {activeScenario.core.stateOfResidence}
+            {activeScenario.core.cityOfResidence ? ` (${activeScenario.core.cityOfResidence})` : ''} tax brackets + FICA + NIIT.
             {' '}{ASSUMPTIONS.filingStatus === 'single' ? 'Single' : 'MFJ'} filer.
             {' '}{(ASSUMPTIONS.employer401kMatchPct * 100).toFixed(0)}% employer match.
             {' '}Brackets/limits grow {(ASSUMPTIONS.bracketIndexing * 100).toFixed(1)}%/yr.
@@ -75,6 +142,10 @@ export const App: React.FC = () => {
 
         <main className="main">
           <div className="main__header">
+            <div className="main__hero-scenario" style={{ color: activeScenario.color }}>
+              <span className="main__hero-scenario-dot" style={{ background: activeScenario.color }} />
+              {activeScenario.name}
+            </div>
             {startTick && (
               <div className="main__hero">
                 <span className="main__hero-label">Net worth at {startTick.age}</span>
@@ -101,15 +172,16 @@ export const App: React.FC = () => {
           </div>
 
           <Chart
-            data={ticks}
+            series={displayedSeries}
+            activeScenarioId={activeScenario.id}
             milestoneAges={milestoneAges}
-            retirementAge={state.core.retirementAge}
-            onRetirementAgeChange={(age) => setCore({ ...state.core, retirementAge: age })}
+            retirementAge={activeScenario.core.retirementAge}
+            onRetirementAgeChange={(age) => setActiveCore({ ...activeScenario.core, retirementAge: age })}
           />
 
-          <MilestoneCards ticks={ticks} milestoneAges={milestoneAges} />
+          <MilestoneCards ticks={activeTicks} milestoneAges={milestoneAges} />
 
-          <YearTable ticks={ticks} milestoneAges={milestoneAges} />
+          <YearTable ticks={activeTicks} milestoneAges={milestoneAges} />
         </main>
       </div>
     </div>

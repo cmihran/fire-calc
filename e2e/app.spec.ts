@@ -187,3 +187,66 @@ test.describe('Reset', () => {
     await expect(comp).toHaveValue('60000');
   });
 });
+
+test.describe('Scenarios', () => {
+  test('baseline scenario renders and can be renamed', async ({ page }) => {
+    await load(page);
+    await expect(page.locator('.scenario-row')).toHaveCount(1);
+    await expect(page.locator('.scenario-row__name')).toHaveText('Baseline');
+
+    // Rename via the pencil icon
+    await page.locator('.scenario-row__icon-btn', { hasText: '✎' }).click();
+    const rename = page.locator('.scenario-row__rename');
+    await rename.fill('Baseline Alt');
+    await rename.press('Enter');
+    await expect(page.locator('.scenario-row__name')).toHaveText('Baseline Alt');
+  });
+
+  test('adding a scenario makes it active and isolates edits', async ({ page }) => {
+    await load(page);
+    await page.locator('.scenarios__btn', { hasText: '+ New' }).click();
+    await expect(page.locator('.scenario-row')).toHaveCount(2);
+
+    // New scenario should be active (second row)
+    const active = page.locator('.scenario-row--active .scenario-row__name');
+    await expect(active).toHaveText(/Scenario 2/);
+
+    // Edit Gross comp in the new scenario
+    const comp = page.locator('.field', { hasText: 'Gross comp' }).locator('input');
+    await comp.fill('250000');
+    await comp.press('Tab');
+    await expect(comp).toHaveValue('250000');
+
+    // Switch back to Baseline — comp should still be 60000
+    await page.locator('.scenario-row__name', { hasText: 'Baseline' }).click();
+    await expect(comp).toHaveValue('60000');
+
+    // Switch back to Scenario 2 — 250000 preserved
+    await page.locator('.scenario-row__name', { hasText: /Scenario 2/ }).click();
+    await expect(comp).toHaveValue('250000');
+  });
+
+  test('comparing two scenarios switches chart to multi-line mode', async ({ page }) => {
+    await load(page);
+    // Default single scenario: 5-item stacked legend
+    await expect(page.locator('.chart-card__legend > span')).toHaveCount(5);
+
+    await page.locator('.scenarios__btn', { hasText: 'Duplicate' }).click();
+    await expect(page.locator('.scenario-row')).toHaveCount(2);
+
+    // Two scenarios, both in compare → overlay mode → 2-item legend per scenario
+    const legend = page.locator('.chart-card__legend > span');
+    await expect(legend).toHaveCount(2);
+    await expect(legend.nth(0)).toContainText('Baseline');
+    await expect(legend.nth(1)).toContainText(/Copy of Baseline/);
+  });
+
+  test('delete is disabled with a single scenario, enabled with two', async ({ page }) => {
+    await load(page);
+    const delBtn = page.locator('.scenario-row__icon-btn--danger').first();
+    await expect(delBtn).toBeDisabled();
+
+    await page.locator('.scenarios__btn', { hasText: '+ New' }).click();
+    await expect(page.locator('.scenario-row__icon-btn--danger').first()).toBeEnabled();
+  });
+});

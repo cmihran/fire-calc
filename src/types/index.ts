@@ -96,14 +96,15 @@ export interface Tick {
 export interface Scenario {
   id: string;
   name: string;
-  color: string;
-  overrides: Record<string, number | string>;
+  color: string;                  // hex, used for chart overlay + picker swatch
+  core: CoreConfig;
+  sliders: SliderOverrides;
 }
 
 export interface AppState {
-  core: CoreConfig;
-  sliders: SliderOverrides;
-  scenarios: Scenario[];
+  scenarios: Scenario[];          // always length ≥ 1
+  activeScenarioId: string;       // which one Settings/Controls/tables operate on
+  compareIds: string[];           // subset to overlay on chart (includes active)
 }
 
 export interface RothConversionPlan {

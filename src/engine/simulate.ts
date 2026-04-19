@@ -1,5 +1,5 @@
 import type {
-  AppState, Tick, CoreConfig, Assumptions, SliderOverrides, IncomeSources, FilingStatus,
+  Tick, CoreConfig, Assumptions, SliderOverrides, IncomeSources, FilingStatus,
 } from '../types';
 import { ZERO_INCOME } from '../types';
 import { calcTax } from './tax';
@@ -264,12 +264,4 @@ export function simulate(
   }
 
   return ticks;
-}
-
-export function applyOverrides(core: CoreConfig, overrides: Record<string, number | string>): CoreConfig {
-  return { ...core, ...overrides } as CoreConfig;
-}
-
-export function simulateAppState(app: AppState, assumptions: Assumptions): Tick[] {
-  return simulate(app.core, assumptions, app.sliders);
 }
