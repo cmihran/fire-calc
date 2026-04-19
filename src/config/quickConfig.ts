@@ -108,42 +108,30 @@ export const DEFAULT_APP_STATE: AppState = {
 
 // ============================================================================
 // Demo app state — loaded by `?demo` to show off scenario comparison.
-// Three contrasting life paths, all starting from age 35, so the chart
-// immediately has something interesting to overlay.
+// Three relatable career paths branching from a $60k starting point at age
+// 35: stay the course, get a modest promotion, or relocate to a no-income-
+// tax state. Same starting balances across all three so the divergence is
+// purely driven by income, spending, state, savings rate, and retirement age.
 // ============================================================================
-const FIRE_50_CORE: CoreConfig = {
+const PROMOTION_CORE: CoreConfig = {
   ...YOU,
-  annualIncome: 140_000,
-  monthlySpending: 3_000,
-  retirementAge: 50,
-  afterTax: 80_000,
-  afterTaxBasis: 70_000,
-  traditional: 90_000,
-  roth: 40_000,
-  hsa: 8_000,
-  pretax401kPct: 1.0,
-  rothIRAPct: 1.0,
-  megaBackdoorPct: 0.5,
-  hsaContribPct: 1.0,
+  annualIncome: 85_000,            // mid-career bump
+  monthlySpending: 2_700,          // lifestyle creep a bit
+  retirementAge: 65,               // retire 2 years earlier
+  pretax401kPct: 0.6,              // bump 401k from 30% → 60% of limit
+  rothIRAPct: 0.75,
+  hsaContribPct: 0.5,
 };
 
-const BIG_TECH_CORE: CoreConfig = {
+const MOVE_TO_TX_CORE: CoreConfig = {
   ...YOU,
-  annualIncome: 280_000,
-  monthlySpending: 6_500,
-  retirementAge: 55,
-  endAge: 90,
-  stateOfResidence: 'CA',
-  cityOfResidence: null,
-  afterTax: 180_000,
-  afterTaxBasis: 140_000,
-  traditional: 220_000,
-  roth: 90_000,
-  hsa: 15_000,
-  homeEquity: 300_000,
-  pretax401kPct: 1.0,
+  annualIncome: 70_000,            // modest bump, remote/regional role
+  monthlySpending: 2_100,          // lower cost of living
+  retirementAge: 62,               // earlier thanks to more savings
+  stateOfResidence: 'TX',
+  cityOfResidence: null,           // no state income tax
+  pretax401kPct: 0.8,              // aggressive saving with lower COL
   rothIRAPct: 1.0,
-  megaBackdoorPct: 1.0,
   hsaContribPct: 1.0,
 };
 
@@ -151,20 +139,20 @@ export const DEMO_APP_STATE: AppState = {
   scenarios: [
     BASELINE_SCENARIO,
     {
-      id: 'fire-50',
-      name: 'FIRE @ 50',
+      id: 'promotion',
+      name: 'Promotion',
       color: SCENARIO_COLORS[1],
-      core: FIRE_50_CORE,
+      core: PROMOTION_CORE,
       sliders: DEFAULT_SLIDERS,
     },
     {
-      id: 'big-tech-ca',
-      name: 'Big Tech (CA)',
+      id: 'move-to-tx',
+      name: 'Move to Texas',
       color: SCENARIO_COLORS[2],
-      core: BIG_TECH_CORE,
+      core: MOVE_TO_TX_CORE,
       sliders: DEFAULT_SLIDERS,
     },
   ],
   activeScenarioId: BASELINE_SCENARIO.id,
-  compareIds: [BASELINE_SCENARIO.id, 'fire-50', 'big-tech-ca'],
+  compareIds: [BASELINE_SCENARIO.id, 'promotion', 'move-to-tx'],
 };
