@@ -39,6 +39,9 @@ export interface IncomeSources {
   traditionalWithdrawal: number;  // voluntary Traditional withdrawals (ordinary, not FICA)
   selfEmployment: number;         // not wired yet — kept for shape stability
   rental: number;                 // not wired yet
+  homeSaleGain: number;           // §121-adjusted LTCG from primary-residence sale
+  mortgageInterestPaid: number;   // itemized-deduction input, not itself taxable
+  propertyTaxPaid: number;        // itemized-deduction input via SALT
 }
 
 export const ZERO_INCOME: IncomeSources = {
@@ -48,6 +51,7 @@ export const ZERO_INCOME: IncomeSources = {
   socialSecurity: 0, pensionAnnuity: 0, rmd: 0,
   rothConversion: 0, traditionalWithdrawal: 0,
   selfEmployment: 0, rental: 0,
+  homeSaleGain: 0, mortgageInterestPaid: 0, propertyTaxPaid: 0,
 };
 
 export interface TaxResult {
@@ -77,7 +81,9 @@ export interface Tick {
   hsa: number;
   taxable: number;                // balance (total market value)
   taxableBasis: number;           // cost basis (untaxed portion)
-  homeEquity: number;
+  homeEquity: number;             // modeledHomeValue - mortgageBalance + staticHomeEquity
+  homeValue: number;              // modeled primary-residence market value (0 if none)
+  mortgageBalance: number;        // outstanding mortgage principal on modeled home
   otherDebt: number;
   netWorth: number;
 
@@ -91,6 +97,12 @@ export interface Tick {
   socialSecurity: number | null;  // SS benefit received this year
   rmd: number | null;             // forced Traditional distribution
   rothConversion: number | null;  // voluntary Trad → Roth conversion
+  mortgagePayment: number | null; // annual P&I
+  mortgageInterest: number | null;// interest portion of P&I (for itemized deduction display)
+  propertyTax: number | null;     // property tax paid this year
+  homeCarryCost: number | null;   // property tax + insurance + maintenance + HOA
+  homeEventLabel: string | null;  // "Bought", "Sold", etc. for the year a transaction happened
+  homeSaleGain: number | null;    // §121-adjusted taxable gain realized this year (if sold)
 }
 
 export interface Scenario {
@@ -118,6 +130,57 @@ export interface SocialSecurityPlan {
   estimatedPIA: number;           // monthly benefit at FRA, in today's dollars
 }
 
+/**
+ * A primary residence currently owned at simulation start. Evolves each year:
+ * value grows at `appreciationRate`, mortgage amortizes, carry costs scale with
+ * value. Set to `null` if you don't currently own a home (rent or planning to
+ * buy later via a `HomeEvent`).
+ */
+export interface HomeHolding {
+  currentValue: number;           // today's market value
+  mortgageBalance: number;        // outstanding principal
+  mortgageRate: number;           // annual interest rate, e.g. 0.065
+  mortgageYearsRemaining: number; // remaining amortization term
+  costBasis: number;              // purchase price + improvements — used for §121 gain calc
+  ownershipStartAge: number;      // age at which ownership began (for §121 2-of-5 residency rule)
+  propertyTaxRate: number;        // annual property tax / value, e.g. 0.012 (1.2%)
+  insuranceRate: number;          // annual insurance / value, e.g. 0.004
+  maintenanceRate: number;        // annual upkeep / value, e.g. 0.01
+  hoaAnnual: number;              // flat dollar amount per year (0 if none)
+  appreciationRate: number;       // nominal, e.g. 0.035
+  primaryResidence: boolean;      // unlocks §121 on sale
+}
+
+/**
+ * A planned housing transaction at a specific age. Processed at end-of-year
+ * in the simulation so that cash flows (down payment, sale proceeds) land in
+ * the right year. `buy` initializes or replaces the modeled home; `sell`
+ * liquidates the current modeled home (if any) and can trigger §121.
+ */
+export type HomeEvent =
+  | {
+      id: string;
+      kind: 'buy';
+      atAge: number;
+      purchasePrice: number;
+      downPaymentPct: number;       // 0..1 of purchase price
+      mortgageRate: number;
+      mortgageYears: number;        // term length, 15/20/30
+      closingCostPct: number;       // 0..0.05, one-time at purchase
+      propertyTaxRate: number;
+      insuranceRate: number;
+      maintenanceRate: number;
+      hoaAnnual: number;
+      appreciationRate: number;
+      primaryResidence: boolean;
+    }
+  | {
+      id: string;
+      kind: 'sell';
+      atAge: number;
+      sellingCostPct: number;        // realtor + closing, e.g. 0.07
+    };
+
 export interface CoreConfig {
   age: number;
   retirementAge: number;
@@ -142,6 +205,11 @@ export interface CoreConfig {
 
   socialSecurity: SocialSecurityPlan | null;
   rothConversions: RothConversionPlan[];
+
+  /** Primary residence currently owned. null if renting / planning to buy. */
+  currentHome: HomeHolding | null;
+  /** Planned future buy/sell events, processed at their `atAge`. */
+  homeEvents: HomeEvent[];
 }
 
 export interface Assumptions {

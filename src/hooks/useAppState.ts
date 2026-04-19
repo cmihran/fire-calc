@@ -38,6 +38,12 @@ function migrateCore(raw: Partial<CoreConfig> & Record<string, unknown>): CoreCo
       ? raw.socialSecurity
       : base.socialSecurity,
     rothConversions: Array.isArray(raw.rothConversions) ? raw.rothConversions : [],
+    currentHome: raw.currentHome !== undefined
+      ? (raw.currentHome as CoreConfig['currentHome'])
+      : null,
+    homeEvents: Array.isArray(raw.homeEvents)
+      ? (raw.homeEvents as CoreConfig['homeEvents'])
+      : [],
   };
 }
 
@@ -176,7 +182,12 @@ export function useAppState(): AppStateAPI {
         id: makeId(),
         name: name ?? `Scenario ${prev.scenarios.length + 1}`,
         color,
-        core: { ...active.core, rothConversions: [...active.core.rothConversions] },
+        core: {
+          ...active.core,
+          rothConversions: [...active.core.rothConversions],
+          currentHome: active.core.currentHome ? { ...active.core.currentHome } : null,
+          homeEvents: active.core.homeEvents.map((e) => ({ ...e })),
+        },
         sliders: { ...active.sliders },
       };
       return {
@@ -195,7 +206,12 @@ export function useAppState(): AppStateAPI {
         id: makeId(),
         name: `Copy of ${active.name}`,
         color,
-        core: { ...active.core, rothConversions: [...active.core.rothConversions] },
+        core: {
+          ...active.core,
+          rothConversions: [...active.core.rothConversions],
+          currentHome: active.core.currentHome ? { ...active.core.currentHome } : null,
+          homeEvents: active.core.homeEvents.map((e) => ({ ...e })),
+        },
         sliders: { ...active.sliders },
       };
       return {

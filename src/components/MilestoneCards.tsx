@@ -39,6 +39,8 @@ export const MilestoneCards: React.FC<Props> = ({ ticks, milestoneAges }) => {
             {m.hsa > 0 && <Row label="HSA" value={fmt(m.hsa)} />}
             <Row label="Taxable" value={fmt(m.taxable)} />
             {m.homeEquity > 0 && <Row label="Home equity" value={fmt(m.homeEquity)} />}
+            {m.homeValue > 0 && <Row label="Home value" value={fmt(m.homeValue)} />}
+            {m.mortgageBalance > 0 && <Row label="Mortgage bal" value={fmt(-m.mortgageBalance)} />}
             <div className="milestone-detail__divider" />
             <Row label="Comp" value={fmt(m.comp)} />
             {m.socialSecurity != null && m.socialSecurity > 0 && (
@@ -47,6 +49,19 @@ export const MilestoneCards: React.FC<Props> = ({ ticks, milestoneAges }) => {
             {m.rmd != null && m.rmd > 0 && <Row label="RMD" value={fmt(m.rmd)} />}
             {m.rothConversion != null && m.rothConversion > 0 && (
               <Row label="Roth conversion" value={fmt(m.rothConversion)} />
+            )}
+            {m.mortgagePayment != null && m.mortgagePayment > 0 && (
+              <Row label="Mortgage P&I" value={fmt(m.mortgagePayment)} />
+            )}
+            {m.mortgageInterest != null && m.mortgageInterest > 0 && (
+              <Row label="…interest paid" value={fmt(m.mortgageInterest)} />
+            )}
+            {m.propertyTax != null && m.propertyTax > 0 && (
+              <Row label="Property tax" value={fmt(m.propertyTax)} />
+            )}
+            {m.homeEventLabel && <Row label="Home event" value={m.homeEventLabel} />}
+            {m.homeSaleGain != null && m.homeSaleGain > 0 && (
+              <Row label="Home sale gain" value={fmt(m.homeSaleGain)} />
             )}
           </div>
         );

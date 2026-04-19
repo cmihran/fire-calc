@@ -37,6 +37,8 @@ export const YOU: CoreConfig = {
     estimatedPIA: 2_800,         // monthly benefit at FRA in today's dollars — paste from ssa.gov
   },
   rothConversions: [],
+  currentHome: null,             // set to a HomeHolding if you currently own
+  homeEvents: [],                // add buy/sell events via the Home editor
 };
 
 // ============================================================================

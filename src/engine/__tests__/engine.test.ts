@@ -7,6 +7,9 @@ import {
   grossUpTraditionalWithdrawal,
 } from '../tax';
 import {
+  annualMortgagePayment, amortizeYear, section121Exclusion, computeSaleOutcome,
+} from '../home';
+import {
   getYearConstants, BASE_YEAR, rmdStartAge, UNIFORM_LIFETIME_TABLE,
 } from '../constants';
 import { computeRMD, computeRothConversion, drawDown } from '../withdrawals';
@@ -45,6 +48,8 @@ const BASE_CORE: CoreConfig = {
   hsaContribPct: 0,
   socialSecurity: null,
   rothConversions: [],
+  currentHome: null,
+  homeEvents: [],
 };
 
 const BASE_SLIDERS: SliderOverrides = {
@@ -458,5 +463,327 @@ describe('simulate (end-to-end)', () => {
     expect(later.taxableBasis).toBeGreaterThan(0);
     // Basis should be ≤ balance
     expect(later.taxableBasis).toBeLessThanOrEqual(later.taxable);
+  });
+});
+
+// ─── Mortgage math ───────────────────────────────────────────────────────
+describe('annualMortgagePayment', () => {
+  it('zero principal → zero payment', () => {
+    expect(annualMortgagePayment(0, 0.06, 30)).toBe(0);
+  });
+  it('30-yr fixed at 6.5% on $300k ≈ 12 × $1896 monthly', () => {
+    const annual = annualMortgagePayment(300_000, 0.065, 30);
+    // Standard amortization formula: monthly ≈ $1896.20 → annual ≈ $22,755
+    expect(annual).toBeGreaterThan(22_000);
+    expect(annual).toBeLessThan(23_500);
+  });
+  it('zero-interest loan just divides principal by years', () => {
+    expect(annualMortgagePayment(300_000, 0, 30)).toBeCloseTo(10_000, 0);
+  });
+});
+
+describe('amortizeYear', () => {
+  it('first year of $300k @ 6.5%, $22k payment → most is interest', () => {
+    const payment = annualMortgagePayment(300_000, 0.065, 30);
+    const year1 = amortizeYear(300_000, 0.065, payment);
+    expect(year1.interest).toBeCloseTo(300_000 * 0.065, 0);
+    expect(year1.principal).toBeGreaterThan(0);
+    expect(year1.newBalance).toBeLessThan(300_000);
+    expect(year1.newBalance).toBeGreaterThan(290_000);
+  });
+  it('zero balance → zero everything', () => {
+    const r = amortizeYear(0, 0.06, 10_000);
+    expect(r.interest).toBe(0);
+    expect(r.principal).toBe(0);
+    expect(r.newBalance).toBe(0);
+  });
+  it('final year caps principal at balance', () => {
+    // Balance of $100 @ 6%, payment $10,000 — principal paid = $100, not full payment
+    const r = amortizeYear(100, 0.06, 10_000);
+    expect(r.principal).toBeCloseTo(100);
+    expect(r.newBalance).toBe(0);
+    expect(r.payment).toBeCloseTo(100 + 100 * 0.06);
+  });
+});
+
+// ─── §121 exclusion ──────────────────────────────────────────────────────
+describe('section121Exclusion', () => {
+  it('non-primary residence → no exclusion', () => {
+    expect(section121Exclusion(300_000, false, 10, 'single')).toBe(0);
+  });
+  it('owned <2 years → no exclusion', () => {
+    expect(section121Exclusion(300_000, true, 1, 'single')).toBe(0);
+  });
+  it('single: excludes up to $250k', () => {
+    expect(section121Exclusion(200_000, true, 5, 'single')).toBe(200_000);
+    expect(section121Exclusion(300_000, true, 5, 'single')).toBe(250_000);
+  });
+  it('MFJ: excludes up to $500k', () => {
+    expect(section121Exclusion(600_000, true, 5, 'married_filing_jointly')).toBe(500_000);
+  });
+  it('negative gain → 0', () => {
+    expect(section121Exclusion(-10_000, true, 5, 'single')).toBe(0);
+  });
+});
+
+describe('computeSaleOutcome', () => {
+  const baseHome = {
+    currentValue: 800_000,
+    mortgageBalance: 200_000,
+    mortgageRate: 0.055,
+    mortgageYearsRemaining: 20,
+    costBasis: 400_000,
+    ownershipStartAge: 35,
+    propertyTaxRate: 0.012,
+    insuranceRate: 0.004,
+    maintenanceRate: 0.01,
+    hoaAnnual: 0,
+    appreciationRate: 0.035,
+    primaryResidence: true,
+  };
+  it('single with $400k gain: $250k §121, $150k taxable', () => {
+    // Value 800k, sell cost 6% = 48k, net 752k. Gain = 752k - 400k = 352k.
+    // §121 single = 250k. Taxable = 102k.
+    const out = computeSaleOutcome(baseHome, 800_000, { age: 50 }, 0.06, 'single');
+    expect(out.sellingCost).toBeCloseTo(48_000, 0);
+    expect(out.netProceedsBeforeMortgage).toBeCloseTo(752_000, 0);
+    expect(out.mortgagePayoff).toBeCloseTo(200_000);
+    expect(out.cashToOwner).toBeCloseTo(552_000, 0);
+    expect(out.realizedGain).toBeCloseTo(352_000, 0);
+    expect(out.section121Excluded).toBeCloseTo(250_000);
+    expect(out.taxableGain).toBeCloseTo(102_000, 0);
+  });
+  it('rental (not primary) gets no §121', () => {
+    const out = computeSaleOutcome(
+      { ...baseHome, primaryResidence: false }, 800_000, { age: 50 }, 0.06, 'single',
+    );
+    expect(out.section121Excluded).toBe(0);
+    expect(out.taxableGain).toBeCloseTo(out.realizedGain);
+  });
+  it('sold before 2 years: no §121', () => {
+    // ownershipStartAge 35, age 36 → yearsOwned = 1
+    const out = computeSaleOutcome(baseHome, 800_000, { age: 36 }, 0.06, 'single');
+    expect(out.section121Excluded).toBe(0);
+  });
+});
+
+// ─── Itemization vs. standard deduction ──────────────────────────────────
+describe('calcTax itemized deduction', () => {
+  const baseArgs = {
+    filingStatus: 'single' as const,
+    state: 'TX' as const,
+    city: null,
+    age: 40,
+    year: BASE_YEAR,
+    assumptions: BASE_ASSUMPTIONS,
+  };
+  it('mortgage interest + property tax lowers federal tax vs. no itemization', () => {
+    const s: IncomeSources = {
+      ...ZERO_INCOME, w2: 200_000,
+      mortgageInterestPaid: 25_000,
+      propertyTaxPaid: 8_000,
+    };
+    const withItem = calcTax({ ...baseArgs, sources: s, pretax401k: 0, hsaPayrollContribution: 0 });
+    const withoutItem = calcTax({
+      ...baseArgs,
+      sources: { ...s, mortgageInterestPaid: 0, propertyTaxPaid: 0 },
+      pretax401k: 0, hsaPayrollContribution: 0,
+    });
+    expect(withItem.federal).toBeLessThan(withoutItem.federal);
+  });
+  it('SALT cap limits state-tax deduction at $10k', () => {
+    // Huge mortgage interest; property tax of $50k should be capped at $10k
+    // combined with any state income tax (TX = 0, so SALT = 10k).
+    const s: IncomeSources = {
+      ...ZERO_INCOME, w2: 200_000,
+      mortgageInterestPaid: 0,
+      propertyTaxPaid: 50_000,
+    };
+    const asIs = calcTax({ ...baseArgs, sources: s, pretax401k: 0, hsaPayrollContribution: 0 });
+    // Reduce property tax to 10k — SALT cap means everything above 10k is ignored,
+    // so federal tax should be identical.
+    const atCap = calcTax({
+      ...baseArgs,
+      sources: { ...s, propertyTaxPaid: 10_000 },
+      pretax401k: 0, hsaPayrollContribution: 0,
+    });
+    expect(asIs.federal).toBeCloseTo(atCap.federal, 0);
+  });
+  it('home sale gain taxed at LTCG rates', () => {
+    const s: IncomeSources = { ...ZERO_INCOME, w2: 100_000, homeSaleGain: 200_000 };
+    const r = calcTax({ ...baseArgs, sources: s, pretax401k: 0, hsaPayrollContribution: 0 });
+    // homeSaleGain should stack on ordinary at LTCG preferential rates; federalLTCG > 0
+    expect(r.federalLTCG).toBeGreaterThan(0);
+    // At single 100k w2, the LTCG bracket for 200k stacked is ~15%
+    expect(r.federalLTCG).toBeGreaterThan(200_000 * 0.10);
+    expect(r.federalLTCG).toBeLessThan(200_000 * 0.18);
+  });
+  it('home sale gain included in NIIT investment income', () => {
+    const s: IncomeSources = { ...ZERO_INCOME, w2: 0, homeSaleGain: 300_000 };
+    const r = calcTax({ ...baseArgs, sources: s, pretax401k: 0, hsaPayrollContribution: 0 });
+    // Single NIIT threshold 200k, MAGI 300k, investment income 300k → NIIT on 100k excess
+    expect(r.niit).toBeCloseTo(100_000 * 0.038, 0);
+  });
+});
+
+// ─── simulate with home events ───────────────────────────────────────────
+describe('simulate home events', () => {
+  it('buy event draws down cash and creates a mortgage', () => {
+    const core: CoreConfig = {
+      ...BASE_CORE,
+      age: 35, retirementAge: 65, endAge: 80,
+      annualIncome: 300_000,
+      monthlySpending: 3_000,
+      afterTax: 200_000, afterTaxBasis: 200_000,
+      homeEvents: [{
+        id: 'buy1', kind: 'buy', atAge: 36,
+        purchasePrice: 500_000, downPaymentPct: 0.2,
+        mortgageRate: 0.065, mortgageYears: 30,
+        closingCostPct: 0.03,
+        propertyTaxRate: 0.012, insuranceRate: 0.004, maintenanceRate: 0.01,
+        hoaAnnual: 0, appreciationRate: 0.035, primaryResidence: true,
+      }],
+    };
+    const ticks = simulate(core, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const at35 = ticks.find((t) => t.age === 35)!;
+    const at36 = ticks.find((t) => t.age === 36)!;
+    const at37 = ticks.find((t) => t.age === 37)!;
+
+    // Before buy: no mortgage
+    expect(at35.mortgageBalance).toBe(0);
+    expect(at35.homeValue).toBe(0);
+
+    // After buy at 36 (start-of-year tick reflects balances-at-start, but the
+    // buy happens during year 36 so the tick at 37 shows the new state).
+    expect(at37.homeValue).toBeGreaterThan(0);
+    expect(at37.mortgageBalance).toBeGreaterThan(0);
+    expect(at37.mortgageBalance).toBeLessThan(400_000);
+    // Year 36 should have logged the event
+    expect(at36.homeEventLabel).toContain('Bought');
+    expect(at36.mortgagePayment).not.toBeNull();
+    expect(at36.mortgageInterest).not.toBeNull();
+    expect(at36.propertyTax).not.toBeNull();
+  });
+
+  it('sell event triggers §121 exclusion for primary residence', () => {
+    const core: CoreConfig = {
+      ...BASE_CORE,
+      age: 35, retirementAge: 65, endAge: 80,
+      currentHome: {
+        currentValue: 800_000,
+        mortgageBalance: 200_000,
+        mortgageRate: 0.055,
+        mortgageYearsRemaining: 20,
+        costBasis: 400_000,
+        ownershipStartAge: 28,  // owned 7 years by age 35
+        propertyTaxRate: 0.012,
+        insuranceRate: 0.004,
+        maintenanceRate: 0.01,
+        hoaAnnual: 0,
+        appreciationRate: 0.035,
+        primaryResidence: true,
+      },
+      homeEvents: [{
+        id: 'sell1', kind: 'sell', atAge: 36, sellingCostPct: 0.06,
+      }],
+    };
+    const ticks = simulate(core, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const at36 = ticks.find((t) => t.age === 36)!;
+    const at37 = ticks.find((t) => t.age === 37)!;
+    // Sold: at 37, no more home/mortgage
+    expect(at37.mortgageBalance).toBe(0);
+    expect(at37.homeValue).toBe(0);
+    expect(at36.homeEventLabel).toContain('Sold');
+    // Net proceeds (after 6% cost + mortgage payoff) flow to taxable. The
+    // home also appreciates one year before sale, so taxable gain after
+    // §121 lands around $125-135k (sim appreciates at 3.5%, then §121 = $250k).
+    expect(at36.homeSaleGain).toBeGreaterThan(100_000);
+    expect(at36.homeSaleGain).toBeLessThan(150_000);
+    // Taxable balance should jump up from the net proceeds
+    expect(at37.taxable).toBeGreaterThan(at36.taxable);
+  });
+
+  it('sell before 2 years gets no §121 exclusion', () => {
+    const core: CoreConfig = {
+      ...BASE_CORE,
+      age: 35, retirementAge: 65, endAge: 80,
+      currentHome: {
+        currentValue: 600_000,
+        mortgageBalance: 400_000,
+        mortgageRate: 0.065,
+        mortgageYearsRemaining: 29,
+        costBasis: 500_000,
+        ownershipStartAge: 35,  // just bought
+        propertyTaxRate: 0.012,
+        insuranceRate: 0.004,
+        maintenanceRate: 0.01,
+        hoaAnnual: 0,
+        appreciationRate: 0.0,  // no growth for cleaner math
+        primaryResidence: true,
+      },
+      homeEvents: [{
+        id: 'sell1', kind: 'sell', atAge: 36, sellingCostPct: 0.06,
+      }],
+    };
+    const ticks = simulate(core, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const at36 = ticks.find((t) => t.age === 36)!;
+    // Gross gain = 600k - 36k - 500k = 64k (positive). <2 years → fully taxable.
+    expect(at36.homeSaleGain).not.toBeNull();
+    expect(at36.homeSaleGain!).toBeGreaterThan(50_000);
+  });
+
+  it('mortgage principal declines year over year', () => {
+    const core: CoreConfig = {
+      ...BASE_CORE,
+      age: 35, retirementAge: 65, endAge: 80,
+      annualIncome: 300_000,
+      monthlySpending: 3_000,
+      currentHome: {
+        currentValue: 500_000,
+        mortgageBalance: 400_000,
+        mortgageRate: 0.065,
+        mortgageYearsRemaining: 30,
+        costBasis: 500_000,
+        ownershipStartAge: 35,
+        propertyTaxRate: 0.012,
+        insuranceRate: 0.004,
+        maintenanceRate: 0.01,
+        hoaAnnual: 0,
+        appreciationRate: 0.0,
+        primaryResidence: true,
+      },
+    };
+    const ticks = simulate(core, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const at36 = ticks.find((t) => t.age === 36)!;
+    const at40 = ticks.find((t) => t.age === 40)!;
+    expect(at40.mortgageBalance).toBeLessThan(at36.mortgageBalance);
+  });
+
+  it('two scenarios with different home choices diverge on net worth', () => {
+    const renter: CoreConfig = {
+      ...BASE_CORE,
+      age: 35, retirementAge: 65, endAge: 80,
+      annualIncome: 300_000,
+      monthlySpending: 4_000,  // rent folded into spending
+    };
+    const buyer: CoreConfig = {
+      ...renter,
+      homeEvents: [{
+        id: 'buy1', kind: 'buy', atAge: 36,
+        purchasePrice: 500_000, downPaymentPct: 0.2,
+        mortgageRate: 0.065, mortgageYears: 30,
+        closingCostPct: 0.03,
+        propertyTaxRate: 0.012, insuranceRate: 0.004, maintenanceRate: 0.01,
+        hoaAnnual: 0, appreciationRate: 0.035, primaryResidence: true,
+      }],
+    };
+    const renterTicks = simulate(renter, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const buyerTicks = simulate(buyer, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const renterEnd = renterTicks[renterTicks.length - 1];
+    const buyerEnd = buyerTicks[buyerTicks.length - 1];
+    // They produce different trajectories (direction depends on assumptions;
+    // we only assert divergence so the test doesn't bake in policy-laden
+    // value judgments).
+    expect(renterEnd.netWorth).not.toBe(buyerEnd.netWorth);
   });
 });

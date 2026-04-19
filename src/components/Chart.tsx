@@ -270,6 +270,16 @@ const ChartTooltip: React.FC<TooltipProps> = ({ active, payload, multiMode, seri
           <span className="chart-tooltip__label-muted">Home equity</span><span>{fmt(d.homeEquity)}</span>
         </div>
       )}
+      {d.homeValue > 0 && (
+        <div className="chart-tooltip__row">
+          <span className="chart-tooltip__label-muted">Home value</span><span>{fmt(d.homeValue)}</span>
+        </div>
+      )}
+      {d.mortgageBalance > 0 && (
+        <div className="chart-tooltip__row">
+          <span className="chart-tooltip__label-muted">Mortgage bal</span><span>{fmt(-d.mortgageBalance)}</span>
+        </div>
+      )}
 
       {d.comp != null && (
         <div className="chart-tooltip__section">
@@ -302,6 +312,32 @@ const ChartTooltip: React.FC<TooltipProps> = ({ active, payload, multiMode, seri
           {d.rothConversion != null && d.rothConversion > 0 && (
             <div className="chart-tooltip__row">
               <span className="chart-tooltip__label-muted">Roth conversion</span><span>{fmt(d.rothConversion)}</span>
+            </div>
+          )}
+          {d.mortgagePayment != null && d.mortgagePayment > 0 && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">Mortgage P&amp;I</span>
+              <span>{fmt(d.mortgagePayment)} ({fmt(d.mortgageInterest ?? 0)} int)</span>
+            </div>
+          )}
+          {d.propertyTax != null && d.propertyTax > 0 && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">Property tax</span><span>{fmt(d.propertyTax)}</span>
+            </div>
+          )}
+          {d.homeCarryCost != null && d.homeCarryCost > 0 && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">Home carry</span><span>{fmt(d.homeCarryCost)}</span>
+            </div>
+          )}
+          {d.homeEventLabel && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">Home event</span><span>{d.homeEventLabel}</span>
+            </div>
+          )}
+          {d.homeSaleGain != null && d.homeSaleGain > 0 && (
+            <div className="chart-tooltip__row">
+              <span className="chart-tooltip__label-muted">Home sale gain (taxable)</span><span>{fmt(d.homeSaleGain)}</span>
             </div>
           )}
         </div>

@@ -1,10 +1,15 @@
 import type {
   Tick, CoreConfig, Assumptions, SliderOverrides, IncomeSources, FilingStatus,
+  HomeHolding,
 } from '../types';
 import { ZERO_INCOME } from '../types';
 import { calcTax } from './tax';
 import { getYearConstants, type YearConstants } from './constants';
 import { drawDown, computeRMD, computeRothConversion } from './withdrawals';
+import {
+  annualMortgagePayment, amortizeYear, computeSaleOutcome,
+  newHomeFromBuyEvent, buyEventCashNeeded,
+} from './home';
 
 /**
  * Annual-tick projection.
@@ -21,8 +26,8 @@ import { drawDown, computeRMD, computeRothConversion } from './withdrawals';
  *     voluntary Roth conversions in configured windows.
  *   - Deficit covered in order: Taxable → Traditional → Roth → HSA(65+).
  *
- * Not modeled: AMT, equity comp (RSU/ISO/NSO/ESPP), QSBS, §121, dependents,
- * itemized deductions, stochastic returns, Rule of 55 / 72(t).
+ * Not modeled: AMT, equity comp (RSU/ISO/NSO/ESPP), QSBS, dependents,
+ * stochastic returns, Rule of 55 / 72(t).
  */
 
 /** Claiming-age multiplier on Primary Insurance Amount. FRA = 67 for anyone born 1960+. */
@@ -79,8 +84,19 @@ export function simulate(
   let hsa = core.hsa;
   let taxableBalance = core.afterTax;
   let taxableBasis = Math.min(core.afterTaxBasis, core.afterTax);
-  let homeEquity = core.homeEquity;
+  let staticHomeEquity = core.homeEquity;   // legacy scalar "other real estate"
   let otherDebt = core.otherDebt;
+
+  // Modeled primary residence (null = renting / no modeled home yet).
+  // Events may replace this mid-simulation.
+  let currentHome: HomeHolding | null = core.currentHome
+    ? { ...core.currentHome }
+    : null;
+  let mortgagePayment = currentHome
+    ? annualMortgagePayment(
+        currentHome.mortgageBalance, currentHome.mortgageRate, currentHome.mortgageYearsRemaining,
+      )
+    : 0;
 
   // Running flows
   let comp = core.annualIncome;
@@ -94,6 +110,11 @@ export function simulate(
     const retired = age >= core.retirementAge;
     const ssStarted = !!core.socialSecurity && age >= core.socialSecurity.claimAge;
 
+    const modeledEquity = currentHome ? Math.max(0, currentHome.currentValue - currentHome.mortgageBalance) : 0;
+    const totalHomeEquity = staticHomeEquity + modeledEquity;
+    const mortgageBalanceNow = currentHome ? currentHome.mortgageBalance : 0;
+    const homeValueNow = currentHome ? currentHome.currentValue : 0;
+
     const startTick: Tick = {
       age, year,
       traditional: Math.round(traditional),
@@ -101,12 +122,18 @@ export function simulate(
       hsa: Math.round(hsa),
       taxable: Math.round(taxableBalance),
       taxableBasis: Math.round(taxableBasis),
-      homeEquity: Math.round(homeEquity),
+      homeEquity: Math.round(totalHomeEquity),
+      homeValue: Math.round(homeValueNow),
+      mortgageBalance: Math.round(mortgageBalanceNow),
       otherDebt: Math.round(otherDebt),
-      netWorth: Math.round(traditional + roth + hsa + taxableBalance + homeEquity - otherDebt),
+      netWorth: Math.round(
+        traditional + roth + hsa + taxableBalance + totalHomeEquity - otherDebt,
+      ),
       comp: null, spending: null, taxes: null, taxRate: null,
       withdrawalTax: null, savings: null,
       socialSecurity: null, rmd: null, rothConversion: null,
+      mortgagePayment: null, mortgageInterest: null, propertyTax: null,
+      homeCarryCost: null, homeEventLabel: null, homeSaleGain: null,
     };
 
     if (age === endAge) {
@@ -115,6 +142,63 @@ export function simulate(
     }
 
     const effectiveComp = retired ? 0 : comp;
+
+    // ─── Home events for this age (sells first, then buys) ───────────
+    // Sells free cash + may trigger §121-excluded LTCG; buys consume
+    // cash (down payment + closing) and start a new amortization.
+    let homeSaleGain = 0;
+    let sellCashProceeds = 0;
+    let buyCashNeeded = 0;
+    let homeEventLabel: string | null = null;
+
+    const eventsThisYear = (core.homeEvents ?? []).filter((e) => e.atAge === age);
+    for (const ev of eventsThisYear) {
+      if (ev.kind !== 'sell') continue;
+      if (!currentHome) continue;
+      const outcome = computeSaleOutcome(
+        currentHome, currentHome.currentValue, { age }, ev.sellingCostPct, assumptions.filingStatus,
+      );
+      sellCashProceeds += outcome.cashToOwner;
+      homeSaleGain += outcome.taxableGain;
+      currentHome = null;
+      mortgagePayment = 0;
+      homeEventLabel = homeEventLabel ? `${homeEventLabel} · Sold` : 'Sold';
+    }
+    for (const ev of eventsThisYear) {
+      if (ev.kind !== 'buy') continue;
+      if (currentHome) {
+        homeEventLabel = `${homeEventLabel ?? ''} · buy skipped (already own)`;
+        continue;
+      }
+      buyCashNeeded += buyEventCashNeeded(ev);
+      currentHome = newHomeFromBuyEvent(ev, age);
+      mortgagePayment = annualMortgagePayment(
+        currentHome.mortgageBalance, currentHome.mortgageRate, currentHome.mortgageYearsRemaining,
+      );
+      homeEventLabel = homeEventLabel ? `${homeEventLabel} · Bought` : 'Bought';
+    }
+
+    // ─── Mortgage amortization + carry costs ─────────────────────────
+    let homeInterestPaid = 0;
+    let homePrincipalPaid = 0;
+    let mortgagePaidThisYear = 0;
+    let propertyTaxPaid = 0;
+    let homeCarryCost = 0;
+    if (currentHome) {
+      const amort = amortizeYear(
+        currentHome.mortgageBalance, currentHome.mortgageRate, mortgagePayment,
+      );
+      homeInterestPaid = amort.interest;
+      homePrincipalPaid = amort.principal;
+      mortgagePaidThisYear = amort.payment;
+      currentHome.mortgageBalance = amort.newBalance;
+
+      propertyTaxPaid = currentHome.currentValue * currentHome.propertyTaxRate;
+      const insurance = currentHome.currentValue * currentHome.insuranceRate;
+      const maintenance = currentHome.currentValue * currentHome.maintenanceRate;
+      homeCarryCost = propertyTaxPaid + insurance + maintenance + currentHome.hoaAnnual;
+    }
+    const annualHomeCashOut = mortgagePaidThisYear + homeCarryCost + buyCashNeeded;
 
     // ─── Contributions (pre-tax and post-tax) ─────────────────────────
     const pretax401k = retired ? 0 : Math.min(effectiveComp, core.pretax401kPct * yc.limitPretax401k);
@@ -172,6 +256,9 @@ export function simulate(
       socialSecurity: ssBenefit,
       rmd,
       rothConversion,
+      homeSaleGain,
+      mortgageInterestPaid: homeInterestPaid,
+      propertyTaxPaid: propertyTaxPaid,
     };
 
     // ─── Compute baseline tax ─────────────────────────────────────────
@@ -191,10 +278,10 @@ export function simulate(
     taxableBasis += qdYield + ordDivYield + realizedGainYield;
 
     // ─── Cash flow ────────────────────────────────────────────────────
-    const cashIn = effectiveComp + ssBenefit + rmd;
+    const cashIn = effectiveComp + ssBenefit + rmd + sellCashProceeds;
     const cashOut =
       pretax401k + hsaContrib + megaBackdoor + rothIRAContrib
-      + baselineTax.total + annualSpending;
+      + baselineTax.total + annualSpending + annualHomeCashOut;
     const discretionary = cashIn - cashOut;
 
     let withdrawalTax = 0;
@@ -245,14 +332,28 @@ export function simulate(
       socialSecurity: ssStarted ? Math.round(ssBenefit) : null,
       rmd: rmd > 0 ? Math.round(rmd) : null,
       rothConversion: rothConversion > 0 ? Math.round(rothConversion) : null,
+      mortgagePayment: mortgagePaidThisYear > 0 ? Math.round(mortgagePaidThisYear) : null,
+      mortgageInterest: homeInterestPaid > 0 ? Math.round(homeInterestPaid) : null,
+      propertyTax: propertyTaxPaid > 0 ? Math.round(propertyTaxPaid) : null,
+      homeCarryCost: homeCarryCost > 0 ? Math.round(homeCarryCost) : null,
+      homeEventLabel,
+      homeSaleGain: homeSaleGain > 0 ? Math.round(homeSaleGain) : null,
     });
+
+    // Silence unused-local warnings from strict tsc. Principal paid is
+    // implicitly reflected in mortgageBalance; exposing it is a future chart
+    // detail, but we track it now for symmetry.
+    void homePrincipalPaid;
 
     // ─── Grow balances (end-of-year) ──────────────────────────────────
     traditional = traditional * (1 + assumptions.expectedReturn);
     roth = roth * (1 + assumptions.expectedReturn);
     hsa = hsa * (1 + assumptions.expectedReturn);
     taxableBalance = Math.max(0, taxableBalance) * (1 + assumptions.expectedReturn);
-    homeEquity = homeEquity * (1 + assumptions.inflation + 0.01);
+    staticHomeEquity = staticHomeEquity * (1 + assumptions.inflation + 0.01);
+    if (currentHome) {
+      currentHome.currentValue = currentHome.currentValue * (1 + currentHome.appreciationRate);
+    }
 
     if (otherDebt > 0) {
       otherDebt = Math.max(0, otherDebt - core.otherDebt / 5);
