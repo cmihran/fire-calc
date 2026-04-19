@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
-// Use ?demo to bypass localStorage so tests always start from defaults.
+// Use ?fresh to bypass localStorage AND skip the demo example scenarios,
+// so tests always start from a clean single-Baseline DEFAULT_APP_STATE.
 async function load(page: Page) {
-  await page.goto('/?demo');
+  await page.goto('/?fresh');
   await expect(page.locator('.sidebar__title')).toHaveText(/Net Worth Projection/);
 }
 

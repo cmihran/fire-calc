@@ -105,3 +105,66 @@ export const DEFAULT_APP_STATE: AppState = {
   activeScenarioId: BASELINE_SCENARIO.id,
   compareIds: [BASELINE_SCENARIO.id],
 };
+
+// ============================================================================
+// Demo app state — loaded by `?demo` to show off scenario comparison.
+// Three contrasting life paths, all starting from age 35, so the chart
+// immediately has something interesting to overlay.
+// ============================================================================
+const FIRE_50_CORE: CoreConfig = {
+  ...YOU,
+  annualIncome: 140_000,
+  monthlySpending: 3_000,
+  retirementAge: 50,
+  afterTax: 80_000,
+  afterTaxBasis: 70_000,
+  traditional: 90_000,
+  roth: 40_000,
+  hsa: 8_000,
+  pretax401kPct: 1.0,
+  rothIRAPct: 1.0,
+  megaBackdoorPct: 0.5,
+  hsaContribPct: 1.0,
+};
+
+const BIG_TECH_CORE: CoreConfig = {
+  ...YOU,
+  annualIncome: 280_000,
+  monthlySpending: 6_500,
+  retirementAge: 55,
+  endAge: 90,
+  stateOfResidence: 'CA',
+  cityOfResidence: null,
+  afterTax: 180_000,
+  afterTaxBasis: 140_000,
+  traditional: 220_000,
+  roth: 90_000,
+  hsa: 15_000,
+  homeEquity: 300_000,
+  pretax401kPct: 1.0,
+  rothIRAPct: 1.0,
+  megaBackdoorPct: 1.0,
+  hsaContribPct: 1.0,
+};
+
+export const DEMO_APP_STATE: AppState = {
+  scenarios: [
+    BASELINE_SCENARIO,
+    {
+      id: 'fire-50',
+      name: 'FIRE @ 50',
+      color: SCENARIO_COLORS[1],
+      core: FIRE_50_CORE,
+      sliders: DEFAULT_SLIDERS,
+    },
+    {
+      id: 'big-tech-ca',
+      name: 'Big Tech (CA)',
+      color: SCENARIO_COLORS[2],
+      core: BIG_TECH_CORE,
+      sliders: DEFAULT_SLIDERS,
+    },
+  ],
+  activeScenarioId: BASELINE_SCENARIO.id,
+  compareIds: [BASELINE_SCENARIO.id, 'fire-50', 'big-tech-ca'],
+};

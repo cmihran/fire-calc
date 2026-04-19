@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppState, CoreConfig, Scenario, SliderOverrides } from '../types';
-import { DEFAULT_APP_STATE, SCENARIO_COLORS, pickNextColor } from '../config/quickConfig';
+import { DEFAULT_APP_STATE, DEMO_APP_STATE, SCENARIO_COLORS, pickNextColor } from '../config/quickConfig';
 
 const STORAGE_KEY = 'networth-predict:v1';
 const SAVE_DEBOUNCE_MS = 200;
@@ -101,12 +101,19 @@ function makeId(): string {
 }
 
 export function useAppState(): AppStateAPI {
-  const isDemo = new URLSearchParams(window.location.search).has('demo');
-  const [state, setState] = useState<AppState>(DEFAULT_APP_STATE);
+  const params = new URLSearchParams(window.location.search);
+  // `?demo` boots with example scenarios for showing off comparison.
+  // `?fresh` boots clean single-baseline — used by tests that need a known state.
+  // Both bypass localStorage.
+  const isDemo = params.has('demo');
+  const isFresh = params.has('fresh');
+  const bypassStorage = isDemo || isFresh;
+  const initialState = isDemo ? DEMO_APP_STATE : DEFAULT_APP_STATE;
+  const [state, setState] = useState<AppState>(initialState);
   const hydrated = useRef(false);
 
   useEffect(() => {
-    if (isDemo) {
+    if (bypassStorage) {
       hydrated.current = true;
       return;
     }
@@ -121,10 +128,10 @@ export function useAppState(): AppStateAPI {
     } finally {
       hydrated.current = true;
     }
-  }, [isDemo]);
+  }, [bypassStorage]);
 
   useEffect(() => {
-    if (!hydrated.current || isDemo) return;
+    if (!hydrated.current || bypassStorage) return;
     const handle = window.setTimeout(() => {
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -133,7 +140,7 @@ export function useAppState(): AppStateAPI {
       }
     }, SAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [state, isDemo]);
+  }, [state, bypassStorage]);
 
   const updateActive = useCallback(
     (patch: (s: Scenario) => Scenario) => {
