@@ -113,7 +113,8 @@ export const DEFAULT_APP_STATE: AppState = {
 // Three relatable career paths branching from a $60k starting point at age
 // 35: stay the course, get a modest promotion, or relocate to a no-income-
 // tax state. Same starting balances across all three so the divergence is
-// purely driven by income, spending, state, savings rate, and retirement age.
+// purely driven by income, spending, state, savings rate, retirement age,
+// and housing choices.
 // ============================================================================
 const PROMOTION_CORE: CoreConfig = {
   ...YOU,
@@ -123,6 +124,32 @@ const PROMOTION_CORE: CoreConfig = {
   pretax401kPct: 0.6,              // bump 401k from 30% → 60% of limit
   rothIRAPct: 0.75,
   hsaContribPct: 0.5,
+  // Buy a NY-suburb starter home at 40, downsize/cash out at retirement.
+  // Sale at 65 has been owned 25 yrs → full §121 $250k exclusion applies.
+  homeEvents: [
+    {
+      id: 'promo-buy-40',
+      kind: 'buy',
+      atAge: 40,
+      purchasePrice: 450_000,
+      downPaymentPct: 0.15,
+      mortgageRate: 0.065,
+      mortgageYears: 30,
+      closingCostPct: 0.03,
+      propertyTaxRate: 0.016,        // NY-suburb typical
+      insuranceRate: 0.004,
+      maintenanceRate: 0.01,
+      hoaAnnual: 0,
+      appreciationRate: 0.032,       // northeast long-run ~3%
+      primaryResidence: true,
+    },
+    {
+      id: 'promo-sell-65',
+      kind: 'sell',
+      atAge: 65,
+      sellingCostPct: 0.06,          // 5% realtor + 1% closing
+    },
+  ],
 };
 
 const MOVE_TO_TX_CORE: CoreConfig = {
@@ -135,6 +162,26 @@ const MOVE_TO_TX_CORE: CoreConfig = {
   pretax401kPct: 0.8,              // aggressive saving with lower COL
   rothIRAPct: 1.0,
   hsaContribPct: 1.0,
+  // Buy earlier and cheaper in TX — big property-tax drag but no state income
+  // tax. Hold through retirement (no sell event).
+  homeEvents: [
+    {
+      id: 'tx-buy-38',
+      kind: 'buy',
+      atAge: 38,
+      purchasePrice: 320_000,
+      downPaymentPct: 0.15,
+      mortgageRate: 0.065,
+      mortgageYears: 30,
+      closingCostPct: 0.03,
+      propertyTaxRate: 0.020,        // TX typical (~2% is the trade-off for 0% income tax)
+      insuranceRate: 0.005,          // TX insurance runs hotter (storms)
+      maintenanceRate: 0.01,
+      hoaAnnual: 0,
+      appreciationRate: 0.045,       // TX sunbelt growth
+      primaryResidence: true,
+    },
+  ],
 };
 
 export const DEMO_APP_STATE: AppState = {
