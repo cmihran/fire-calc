@@ -630,6 +630,28 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
       </div>
 
       <div className="settings__group">
+        <div className="settings__group-label">Healthcare (pre-Medicare gap)</div>
+        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.4rem' }}>
+          <input
+            type="checkbox"
+            checked={core.acaEnabled}
+            onChange={(e) => set('acaEnabled', e.target.checked)}
+          />
+          <span className="field__label" style={{ margin: 0 }}>
+            Use ACA in gap ({core.retirementAge}–64)
+          </span>
+        </label>
+        {core.acaEnabled && (
+          <div className="settings__grid settings__grid--2col">
+            <Field label="Household size" value={core.householdSize} step={1} min={1} max={10}
+              onChange={(v) => set('householdSize', v)} />
+            <Field label="SLCSP / yr" value={core.acaSLCSPAnnual} step={500} min={0} prefix="$"
+              onChange={(v) => set('acaSLCSPAnnual', v)} />
+          </div>
+        )}
+      </div>
+
+      <div className="settings__group">
         <div className="settings__group-label">Equity compensation</div>
         <EquityEditor
           plan={core.equityComp}

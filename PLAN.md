@@ -143,8 +143,12 @@ Not yet: ESPP qualifying-vs-disqualifying disposition logic (treated as disquali
 
 Not yet: SALT addback and misc itemized AMT adjustments (only relevant for itemizers, which we don't model).
 
-### P2.3 — ACA Premium Tax Credit
-For early retirees bridging to Medicare (age < 65 + no employer coverage). New assumption: `healthcareCoverage: 'employer' | 'aca' | 'medicare' | 'none'`. Premium credit formula based on FPL × household size, MAGI-dependent. Big for anyone retiring before 65. Separate concept from tax — model as a reduction to "spending" not a tax credit, to match how cash flows work in the sim.
+### P2.3 — ACA Premium Tax Credit ✅ (done)
+`src/engine/healthcare.ts` ships `computeACAPremiumAndCredit({ magi, householdSize, slcspTodayDollars, year, assumptions })` → `{ fplRatio, applicablePct, slcsp, expectedContribution, ptc, netPremium }`. Uses IRA-era (post-2021) applicable-% curve with no 400% FPL cliff — 0% below 150% FPL, rising piecewise-linearly to 8.5% at/above 400%. FPL table is 2024 HHS (48 states + DC), indexed with inflation. SLCSP is user-supplied (today's $, inflates). `CoreConfig` gains `acaEnabled`, `householdSize`, `acaSLCSPAnnual`. Opt-in (default off) to preserve existing projections.
+
+Integration: during gap years (`retirementAge ≤ age < 65` AND `acaEnabled`), sim computes ACA MAGI = AGI + untaxed SS using a first-pass income state (pre-drawdown), then adds `netPremium` to `annualSpending` for that year. UI lives in a Healthcare section in Settings.
+
+Not yet: AK/HI use higher FPL schedules (not modeled — few FIRE retirees); two-pass MAGI iteration (single-pass underestimates MAGI when user covers ACA cost via Traditional withdrawal, over-subsidizing by a small amount); no reconciliation with actual year-end income.
 
 ### P2.4 — Capital loss harvesting + carryforward
 Requires basis tracking (P0.2). Realize losses when market is down, offset STCG→LTCG→$3k ordinary per year, carry forward indefinitely. Needs: market volatility in the sim (currently no volatility — just smooth `expectedReturn`). So this implies stochastic returns, which is a bigger lift — **likely TODO.md candidate**.

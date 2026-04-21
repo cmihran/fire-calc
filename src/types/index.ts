@@ -233,6 +233,17 @@ export interface CoreConfig {
 
   /** RSU vest windows + NSO/ISO/ESPP exercise events. */
   equityComp: EquityCompPlan;
+
+  /** Use ACA marketplace in pre-Medicare retirement gap (retirementAge..64). */
+  acaEnabled: boolean;
+  /** Household size for FPL lookup (self + spouse + dependents). */
+  householdSize: number;
+  /**
+   * Annual SLCSP benchmark premium (today's $, inflates in sim). Varies by
+   * state/region/age — user should paste from healthcare.gov or use a
+   * KFF calculator. ~$8k/yr is a rough middle-aged single-person median.
+   */
+  acaSLCSPAnnual: number;
 }
 
 export interface Assumptions {

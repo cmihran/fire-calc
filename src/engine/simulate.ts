@@ -11,6 +11,7 @@ import {
   newHomeFromBuyEvent, buyEventCashNeeded,
 } from './home';
 import { equityForYear } from './equity';
+import { computeACAPremiumAndCredit } from './healthcare';
 
 /**
  * Annual-tick projection.
@@ -294,13 +295,34 @@ export function simulate(
     // unchanged at this step (growth is applied at end-of-year).
     taxableBasis += qdYield + ordDivYield + realizedGainYield;
 
+    // ─── ACA Premium Tax Credit (pre-Medicare gap years) ──────────────
+    // Only active when acaEnabled, retired, and not yet on Medicare (65+).
+    // MAGI for ACA = AGI + untaxed SS. We use the pre-drawdown income state
+    // as a first-pass MAGI — a subsequent Traditional withdrawal to cover
+    // spending would bump MAGI and reduce PTC, but we don't iterate.
+    let acaNetPremium = 0;
+    if (core.acaEnabled && retired && age < 65) {
+      const acaMagi = Math.max(0,
+        effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
+        + ordDivYield + qdYield + realizedGainYield
+        + ssBenefit + rmd + rothConversion + homeSaleGain
+        - pretax401k - hsaContrib,
+      );
+      const aca = computeACAPremiumAndCredit({
+        magi: acaMagi, householdSize: core.householdSize,
+        slcspTodayDollars: core.acaSLCSPAnnual,
+        year, assumptions,
+      });
+      acaNetPremium = aca.netPremium;
+    }
+
     // ─── Cash flow ────────────────────────────────────────────────────
     // equity.cashIn covers RSU sold at vest + NSO/ESPP cashless exercise.
     // ISO bargain is stashed on IncomeSources for AMT but produces no cash.
     const cashIn = effectiveComp + equity.cashIn + ssBenefit + rmd + sellCashProceeds;
     const cashOut =
       pretax401k + hsaContrib + megaBackdoor + rothIRAContrib
-      + baselineTax.total + annualSpending + annualHomeCashOut;
+      + baselineTax.total + annualSpending + annualHomeCashOut + acaNetPremium;
     const discretionary = cashIn - cashOut;
 
     let withdrawalTax = 0;

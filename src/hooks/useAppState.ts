@@ -54,6 +54,13 @@ function migrateCore(raw: Partial<CoreConfig> & Record<string, unknown>): CoreCo
             : [],
         }
       : { vests: [], exercises: [] },
+    acaEnabled: typeof raw.acaEnabled === 'boolean' ? raw.acaEnabled : false,
+    householdSize: typeof raw.householdSize === 'number' && raw.householdSize >= 1
+      ? raw.householdSize
+      : 1,
+    acaSLCSPAnnual: typeof raw.acaSLCSPAnnual === 'number' && raw.acaSLCSPAnnual >= 0
+      ? raw.acaSLCSPAnnual
+      : base.acaSLCSPAnnual,
   };
 }
 

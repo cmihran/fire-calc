@@ -214,6 +214,43 @@ test.describe('Equity comp', () => {
   });
 });
 
+test.describe('Healthcare (ACA)', () => {
+  test('enabling ACA in a FIRE scenario reduces retirement-year net worth', async ({ page }) => {
+    await load(page);
+    // Build a FIRE-at-55 scenario so age 55-64 is a real gap window.
+    const retire = page.locator('.field', { hasText: 'Retire' }).locator('input');
+    await retire.fill('55');
+    await retire.press('Tab');
+    const trad = page.locator('.field', { hasText: 'Traditional' }).locator('input');
+    await trad.fill('1000000');
+    await trad.press('Tab');
+
+    // Add a Roth conversion window so MAGI stays above ~400% FPL during the
+    // gap (ensures PTC is small and ACA cost is non-trivial).
+    await page.locator('.roth-conversions__add', { hasText: '+ Conversion window' }).click();
+    const convRows = page.locator('.settings__group', { hasText: 'Roth conversions' })
+      .locator('.roth-conversions__row input');
+    await convRows.nth(0).fill('55');
+    await convRows.nth(1).fill('64');
+    await convRows.nth(2).fill('150000');
+    await convRows.nth(2).press('Tab');
+    await page.waitForTimeout(150);
+
+    // Baseline net worth at age 65 (first year post-gap, pre-ACA toggle)
+    const row65 = page.locator('.year-table tbody tr', { hasText: /^65\b/ }).first();
+    const baseNW = await row65.locator('td').nth(4).textContent();
+
+    // Flip ACA on
+    const acaToggle = page.locator('.settings__group', { hasText: 'Healthcare' })
+      .locator('input[type="checkbox"]');
+    await acaToggle.check();
+    await page.waitForTimeout(200);
+
+    const acaNW = await row65.locator('td').nth(4).textContent();
+    expect(acaNW).not.toBe(baseNW);
+  });
+});
+
 test.describe('Reset', () => {
   test('Reset restores defaults', async ({ page }) => {
     await load(page);

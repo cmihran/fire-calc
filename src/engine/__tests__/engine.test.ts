@@ -14,6 +14,9 @@ import {
 } from '../constants';
 import { computeRMD, computeRothConversion, drawDown } from '../withdrawals';
 import { equityForYear } from '../equity';
+import {
+  applicablePercentage, federalPovertyLevel, computeACAPremiumAndCredit,
+} from '../healthcare';
 import { simulate } from '../simulate';
 
 const BASE_ASSUMPTIONS: Assumptions = {
@@ -52,6 +55,9 @@ const BASE_CORE: CoreConfig = {
   currentHome: null,
   homeEvents: [],
   equityComp: { vests: [], exercises: [] },
+  acaEnabled: false,
+  householdSize: 1,
+  acaSLCSPAnnual: 8_000,
 };
 
 const BASE_SLIDERS: SliderOverrides = {
@@ -946,5 +952,113 @@ describe('simulate home events', () => {
     // we only assert divergence so the test doesn't bake in policy-laden
     // value judgments).
     expect(renterEnd.netWorth).not.toBe(buyerEnd.netWorth);
+  });
+});
+
+// ─── ACA PTC ─────────────────────────────────────────────────────────────
+describe('applicablePercentage', () => {
+  it('zero below 150% FPL', () => {
+    expect(applicablePercentage(1.0)).toBe(0);
+    expect(applicablePercentage(1.49)).toBe(0);
+  });
+  it('rises linearly across FPL tiers', () => {
+    expect(applicablePercentage(1.50)).toBeCloseTo(0, 4);
+    expect(applicablePercentage(2.00)).toBeCloseTo(0.02, 4);
+    expect(applicablePercentage(2.50)).toBeCloseTo(0.04, 4);
+    expect(applicablePercentage(3.00)).toBeCloseTo(0.06, 4);
+    expect(applicablePercentage(4.00)).toBeCloseTo(0.085, 4);
+  });
+  it('caps at 8.5% above 400% FPL (IRA, no cliff)', () => {
+    expect(applicablePercentage(5.0)).toBeCloseTo(0.085, 4);
+    expect(applicablePercentage(10.0)).toBeCloseTo(0.085, 4);
+  });
+});
+
+describe('federalPovertyLevel', () => {
+  it('matches 2024 single-person base', () => {
+    expect(federalPovertyLevel(1, 2024, BASE_ASSUMPTIONS)).toBeCloseTo(15_060, 0);
+  });
+  it('adds per-person increment', () => {
+    expect(federalPovertyLevel(2, 2024, BASE_ASSUMPTIONS)).toBeCloseTo(15_060 + 5_380, 0);
+    expect(federalPovertyLevel(4, 2024, BASE_ASSUMPTIONS)).toBeCloseTo(15_060 + 3 * 5_380, 0);
+  });
+  it('inflates with assumption.inflation', () => {
+    const fpl2034 = federalPovertyLevel(1, 2034, BASE_ASSUMPTIONS);
+    expect(fpl2034).toBeCloseTo(15_060 * Math.pow(1.025, 10), -1);
+  });
+});
+
+describe('computeACAPremiumAndCredit', () => {
+  const args = {
+    householdSize: 1, slcspTodayDollars: 8_000,
+    year: 2030, assumptions: BASE_ASSUMPTIONS,
+  };
+  it('low MAGI = full subsidy (PTC = SLCSP)', () => {
+    const r = computeACAPremiumAndCredit({ ...args, magi: 20_000 });
+    expect(r.applicablePct).toBe(0);
+    expect(r.ptc).toBeCloseTo(r.slcsp, 0);
+    expect(r.netPremium).toBeCloseTo(0, 0);
+  });
+  it('high MAGI above 400% FPL = 8.5% cap', () => {
+    // At 2030 FPL single ~$19.3k, 400% = $77.2k. Use magi = $200k, well above.
+    const r = computeACAPremiumAndCredit({ ...args, magi: 200_000 });
+    expect(r.applicablePct).toBeCloseTo(0.085, 4);
+    expect(r.expectedContribution).toBeCloseTo(17_000, 0);
+    // SLCSP ~$8k inflated to 2030 < expected $17k → PTC = 0
+    expect(r.ptc).toBe(0);
+    expect(r.netPremium).toBeCloseTo(r.slcsp, 0);
+  });
+  it('middle MAGI = partial subsidy', () => {
+    // 250% FPL single 2030 ≈ $48k; applicable% = 4%; expected = $1,920
+    const r = computeACAPremiumAndCredit({ ...args, magi: 48_000 });
+    expect(r.applicablePct).toBeGreaterThan(0.03);
+    expect(r.applicablePct).toBeLessThan(0.05);
+    expect(r.ptc).toBeGreaterThan(0);
+    expect(r.ptc).toBeLessThan(r.slcsp);
+  });
+  it('PTC never exceeds SLCSP', () => {
+    const r = computeACAPremiumAndCredit({ ...args, magi: 0 });
+    expect(r.ptc).toBeLessThanOrEqual(r.slcsp);
+  });
+});
+
+describe('simulate with ACA enabled', () => {
+  it('ACA with high-MAGI Roth conversion ladder costs real money', () => {
+    // FIRE at 55 with a Roth conversion ladder that lifts MAGI above 400% FPL,
+    // so PTC is small and net premium is substantial.
+    const base: CoreConfig = {
+      ...BASE_CORE, age: 50, retirementAge: 55, endAge: 70,
+      annualIncome: 200_000, monthlySpending: 4_000,
+      traditional: 1_500_000, afterTax: 400_000, afterTaxBasis: 400_000,
+      socialSecurity: null,
+      rothConversions: [{ fromAge: 55, toAge: 64, targetBracketTop: 150_000 }],
+    };
+    const withoutACA = simulate(base, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const withACA = simulate({ ...base, acaEnabled: true }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+
+    // Higher MAGI → small PTC → full-price premium paid out of savings, so
+    // net worth at the end of the gap (age 65) should be lower.
+    const at65WithoutACA = withoutACA.find((t) => t.age === 65)!;
+    const at65WithACA = withACA.find((t) => t.age === 65)!;
+    expect(at65WithACA.netWorth).toBeLessThan(at65WithoutACA.netWorth);
+    // Over 10 gap years × ~$8k net premium (roughly), expect >$50k delta.
+    expect(at65WithoutACA.netWorth - at65WithACA.netWorth).toBeGreaterThan(50_000);
+  });
+
+  it('ACA does not apply at 65+ (Medicare age)', () => {
+    // Set up a scenario retiring at 70 (no gap) — ACA shouldn't kick in.
+    const base: CoreConfig = {
+      ...BASE_CORE, age: 65, retirementAge: 65, endAge: 80,
+      annualIncome: 0, monthlySpending: 3_000,
+      traditional: 500_000, afterTax: 500_000, afterTaxBasis: 500_000,
+      socialSecurity: null,
+    };
+    const withoutACA = simulate(base, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const withACA = simulate({ ...base, acaEnabled: true }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+
+    // At age 65+ ACA is off — trajectories should be identical.
+    const without70 = withoutACA.find((t) => t.age === 70)!;
+    const with70 = withACA.find((t) => t.age === 70)!;
+    expect(with70.netWorth).toBe(without70.netWorth);
   });
 });
