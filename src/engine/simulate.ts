@@ -11,7 +11,7 @@ import {
   newHomeFromBuyEvent, buyEventCashNeeded,
 } from './home';
 import { equityForYear } from './equity';
-import { computeACAPremiumAndCredit } from './healthcare';
+import { computeACAPremiumAndCredit, computeIRMAA } from './healthcare';
 
 /**
  * Annual-tick projection.
@@ -28,8 +28,7 @@ import { computeACAPremiumAndCredit } from './healthcare';
  *     voluntary Roth conversions in configured windows.
  *   - Deficit covered in order: Taxable → Traditional → Roth → HSA(65+).
  *
- * Not modeled: QSBS, dependents, stochastic returns, Rule of 55 / 72(t),
- * ACA PTC.
+ * Not modeled: QSBS, dependents, stochastic returns, 72(t).
  */
 
 /** Claiming-age multiplier on Primary Insurance Amount. FRA = 67 for anyone born 1960+. */
@@ -103,6 +102,10 @@ export function simulate(
   // Running flows
   let comp = core.annualIncome;
   let annualSpending = core.monthlySpending * 12;
+
+  // Rolling MAGI buffer for IRMAA's 2-year lookback. Keyed by age so that
+  // age 65's IRMAA reads age-63's post-drawdown MAGI.
+  const magiHistory: Record<number, number> = {};
 
   const ticks: Tick[] = [];
 
@@ -295,25 +298,39 @@ export function simulate(
     // unchanged at this step (growth is applied at end-of-year).
     taxableBasis += qdYield + ordDivYield + realizedGainYield;
 
-    // ─── ACA Premium Tax Credit (pre-Medicare gap years) ──────────────
-    // Only active when acaEnabled, retired, and not yet on Medicare (65+).
-    // MAGI for ACA = AGI + untaxed SS. We use the pre-drawdown income state
-    // as a first-pass MAGI — a subsequent Traditional withdrawal to cover
-    // spending would bump MAGI and reduce PTC, but we don't iterate.
+    // ─── Healthcare: ACA PTC (pre-65) / Medicare IRMAA (65+) ──────────
+    // Pre-drawdown MAGI is the first-pass estimate — a subsequent Traditional
+    // withdrawal to cover spending would bump MAGI and reduce PTC / push into
+    // a higher IRMAA bracket, but we don't iterate.
+    const preDrawdownMagi = Math.max(0,
+      effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
+      + ordDivYield + qdYield + realizedGainYield
+      + ssBenefit + rmd + rothConversion + homeSaleGain
+      - pretax401k - hsaContrib,
+    );
+
     let acaNetPremium = 0;
     if (core.acaEnabled && retired && age < 65) {
-      const acaMagi = Math.max(0,
-        effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
-        + ordDivYield + qdYield + realizedGainYield
-        + ssBenefit + rmd + rothConversion + homeSaleGain
-        - pretax401k - hsaContrib,
-      );
       const aca = computeACAPremiumAndCredit({
-        magi: acaMagi, householdSize: core.householdSize,
+        magi: preDrawdownMagi, householdSize: core.householdSize,
         slcspTodayDollars: core.acaSLCSPAnnual,
         year, assumptions,
       });
       acaNetPremium = aca.netPremium;
+    }
+
+    // IRMAA kicks in at 65+. Thresholds look back 2 years to the final
+    // (post-drawdown) MAGI of age-2; fall back to current-year pre-drawdown
+    // MAGI if the sim started after 63 (no history).
+    let irmaaAnnual = 0;
+    if (core.medicareEnabled && age >= 65) {
+      const lookbackMagi = magiHistory[age - 2] ?? preDrawdownMagi;
+      const enrollees = assumptions.filingStatus === 'married_filing_jointly' ? 2 : 1;
+      const irmaa = computeIRMAA({
+        magi: lookbackMagi, filingStatus: assumptions.filingStatus,
+        enrollees, year, assumptions,
+      });
+      irmaaAnnual = irmaa.annualTotal;
     }
 
     // ─── Cash flow ────────────────────────────────────────────────────
@@ -322,7 +339,8 @@ export function simulate(
     const cashIn = effectiveComp + equity.cashIn + ssBenefit + rmd + sellCashProceeds;
     const cashOut =
       pretax401k + hsaContrib + megaBackdoor + rothIRAContrib
-      + baselineTax.total + annualSpending + annualHomeCashOut + acaNetPremium;
+      + baselineTax.total + annualSpending + annualHomeCashOut
+      + acaNetPremium + irmaaAnnual;
     const discretionary = cashIn - cashOut;
 
     let withdrawalTax = 0;
@@ -362,6 +380,15 @@ export function simulate(
         traditionalWithdrawal: sources.traditionalWithdrawal + result.sourcesAdded.traditionalWithdrawal,
       };
     }
+
+    // Record post-drawdown MAGI for future IRMAA lookbacks.
+    magiHistory[age] = Math.max(0,
+      sources.w2 + sources.rsu + sources.nsoSpread + sources.espp
+      + sources.qualifiedDividends + sources.ordinaryDividends + sources.ltcg
+      + sources.socialSecurity + sources.rmd + sources.rothConversion
+      + sources.traditionalWithdrawal + sources.homeSaleGain
+      - pretax401k - hsaContrib,
+    );
 
     // ─── Record tick ──────────────────────────────────────────────────
     const totalSaved =

@@ -62,6 +62,7 @@ function migrateCore(raw: Partial<CoreConfig> & Record<string, unknown>): CoreCo
     acaSLCSPAnnual: typeof raw.acaSLCSPAnnual === 'number' && raw.acaSLCSPAnnual >= 0
       ? raw.acaSLCSPAnnual
       : base.acaSLCSPAnnual,
+    medicareEnabled: typeof raw.medicareEnabled === 'boolean' ? raw.medicareEnabled : true,
   };
 }
 

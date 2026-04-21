@@ -21,8 +21,8 @@
  * there).
  */
 
-import type { Assumptions } from '../types';
-import { BASE_YEAR } from './constants';
+import type { Assumptions, FilingStatus } from '../types';
+import { BASE_YEAR, getIRMAATable } from './constants';
 
 // 2024 HHS Poverty Guidelines (48 states + DC).
 export const FPL_BASE_2024_SINGLE = 15_060;
@@ -100,5 +100,56 @@ export function computeACAPremiumAndCredit(args: {
   return {
     fplRatio, applicablePct, slcsp, expectedContribution,
     ptc, netPremium: slcsp - ptc,
+  };
+}
+
+// ─── Medicare IRMAA ──────────────────────────────────────────────────────
+/**
+ * Medicare Part B / Part D Income-Related Monthly Adjustment Amount.
+ *
+ * Surcharges kick in at age 65+ when "MAGI" (AGI + tax-exempt interest) from
+ * 2 years prior exceeds a tiered threshold. The lookback matters: a one-time
+ * income spike (Roth conversion, equity vest, home sale) raises IRMAA two
+ * years later for one year. The caller supplies the lookback MAGI.
+ *
+ * Returns annual per-household total, combining the base Part B premium and
+ * tier surcharges, multiplied by `enrollees` (1 or 2). Part D's plan-specific
+ * base premium is not modeled (absorbed in `annualSpending`); only the
+ * Part D IRMAA surcharge is added here.
+ *
+ * Note: we ignore married-filing-separately's narrow schedule since the sim
+ * only supports single + MFJ.
+ */
+export interface IRMAAImpact {
+  magi: number;                    // MAGI that drove the lookup
+  tierIndex: number;               // 0 = base tier (no surcharge)
+  partBMonthly: number;            // base + surcharge, per person
+  partDSurchargeMonthly: number;   // surcharge only, per person
+  annualPerPerson: number;         // 12 × (partBMonthly + partDSurchargeMonthly)
+  enrollees: number;               // 1 or 2
+  annualTotal: number;             // annualPerPerson × enrollees
+}
+
+export function computeIRMAA(args: {
+  magi: number;
+  filingStatus: FilingStatus;
+  enrollees: number;               // typically 1 (single) or 2 (MFJ both 65+)
+  year: number;
+  assumptions: Assumptions;
+}): IRMAAImpact {
+  const { magi, filingStatus, enrollees, year, assumptions } = args;
+  const { tiers, basePartBMonthly } = getIRMAATable(year, filingStatus, assumptions);
+
+  let tierIndex = 0;
+  for (let i = tiers.length - 1; i >= 0; i--) {
+    if (magi >= tiers[i].minMagi) { tierIndex = i; break; }
+  }
+  const t = tiers[tierIndex];
+  const partBMonthly = basePartBMonthly + t.partBSurcharge;
+  const partDSurchargeMonthly = t.partDSurcharge;
+  const annualPerPerson = 12 * (partBMonthly + partDSurchargeMonthly);
+  return {
+    magi, tierIndex, partBMonthly, partDSurchargeMonthly,
+    annualPerPerson, enrollees, annualTotal: annualPerPerson * enrollees,
   };
 }

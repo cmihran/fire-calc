@@ -16,6 +16,7 @@ import { computeRMD, computeRothConversion, drawDown } from '../withdrawals';
 import { equityForYear } from '../equity';
 import {
   applicablePercentage, federalPovertyLevel, computeACAPremiumAndCredit,
+  computeIRMAA,
 } from '../healthcare';
 import { simulate } from '../simulate';
 
@@ -59,6 +60,7 @@ const BASE_CORE: CoreConfig = {
   acaEnabled: false,
   householdSize: 1,
   acaSLCSPAnnual: 8_000,
+  medicareEnabled: false,  // off by default in tests; opt in per-case
 };
 
 const BASE_SLIDERS: SliderOverrides = {
@@ -1122,5 +1124,113 @@ describe('simulate with ACA enabled', () => {
     const without70 = withoutACA.find((t) => t.age === 70)!;
     const with70 = withACA.find((t) => t.age === 70)!;
     expect(with70.netWorth).toBe(without70.netWorth);
+  });
+});
+
+// ─── IRMAA ───────────────────────────────────────────────────────────────
+describe('computeIRMAA', () => {
+  const baseArgs = { filingStatus: 'single' as const, enrollees: 1, year: BASE_YEAR, assumptions: BASE_ASSUMPTIONS };
+
+  it('MAGI below first tier = base Part B only, no surcharges', () => {
+    const r = computeIRMAA({ ...baseArgs, magi: 50_000 });
+    expect(r.tierIndex).toBe(0);
+    expect(r.partDSurchargeMonthly).toBe(0);
+    // Base Part B only, per person, × 12 months
+    expect(r.annualPerPerson).toBeCloseTo(185 * 12, 0);
+    expect(r.annualTotal).toBe(r.annualPerPerson); // enrollees = 1
+  });
+
+  it('MAGI at top tier = full surcharge', () => {
+    const r = computeIRMAA({ ...baseArgs, magi: 800_000 });
+    expect(r.tierIndex).toBe(5);
+    // Top tier: +$443.90 Part B + $85.80 Part D on top of $185 base
+    // Monthly per person = 185 + 443.90 + 85.80 = 714.70
+    expect(r.partBMonthly).toBeCloseTo(185 + 443.90, 0);
+    expect(r.partDSurchargeMonthly).toBeCloseTo(85.80, 1);
+    expect(r.annualPerPerson).toBeCloseTo(12 * 714.70, 0);
+  });
+
+  it('MFJ thresholds are different from single (top tier = $750k not $1M)', () => {
+    const single500k = computeIRMAA({ ...baseArgs, magi: 500_000 });
+    const mfj500k = computeIRMAA({ ...baseArgs, filingStatus: 'married_filing_jointly', magi: 500_000 });
+    // $500k: single is in the top tier; MFJ $500k is one tier below ($400k-$750k).
+    expect(single500k.tierIndex).toBe(5);
+    expect(mfj500k.tierIndex).toBe(4);
+    // Both $500k→ single pays more surcharge per person
+    expect(single500k.partBMonthly).toBeGreaterThan(mfj500k.partBMonthly);
+  });
+
+  it('MFJ with 2 enrollees doubles the annual bill', () => {
+    const r = computeIRMAA({ ...baseArgs, filingStatus: 'married_filing_jointly', enrollees: 2, magi: 300_000 });
+    expect(r.enrollees).toBe(2);
+    expect(r.annualTotal).toBeCloseTo(r.annualPerPerson * 2, 2);
+  });
+
+  it('tier thresholds index with inflation', () => {
+    const at2026 = computeIRMAA({ ...baseArgs, magi: 110_000 });
+    // By 2060, inflation has raised the threshold above $110k → back to tier 0
+    const at2060 = computeIRMAA({ ...baseArgs, magi: 110_000, year: 2060 });
+    expect(at2026.tierIndex).toBe(1);
+    expect(at2060.tierIndex).toBe(0);
+  });
+});
+
+describe('simulate with Medicare IRMAA', () => {
+  it('high-MAGI retiree pays IRMAA starting at 65, dragging net worth', () => {
+    // Ample Traditional → RMDs at 73+ push MAGI into IRMAA territory.
+    const base: CoreConfig = {
+      ...BASE_CORE, age: 60, retirementAge: 65, endAge: 85,
+      annualIncome: 0, monthlySpending: 5_000,
+      traditional: 3_000_000, afterTax: 0, afterTaxBasis: 0, roth: 0, hsa: 0,
+      socialSecurity: { claimAge: 67, estimatedPIA: 3_500 },
+    };
+    const withoutIRMAA = simulate({ ...base, medicareEnabled: false }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const withIRMAA = simulate({ ...base, medicareEnabled: true }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+
+    // Pre-65: identical (no IRMAA yet)
+    const pre = withoutIRMAA.find((t) => t.age === 64)!;
+    const preI = withIRMAA.find((t) => t.age === 64)!;
+    expect(preI.netWorth).toBe(pre.netWorth);
+
+    // Post-65: medicareEnabled scenario lags because of Part B + IRMAA drag
+    const at80 = withoutIRMAA.find((t) => t.age === 80)!;
+    const at80I = withIRMAA.find((t) => t.age === 80)!;
+    expect(at80I.netWorth).toBeLessThan(at80.netWorth);
+    // Base Part B alone is ~$2.2k/yr; at 73+ RMDs push MAGI into top surcharge
+    // tiers (Part B + D ~$6-7k extra/yr per person). Over 15 years, expect
+    // >$30k cumulative delta (grows with returns).
+    expect(at80.netWorth - at80I.netWorth).toBeGreaterThan(30_000);
+  });
+
+  it('MAGI 2-year lookback: Roth conversion spike at 63 raises IRMAA at 65', () => {
+    // Retire at 62, do a one-year $250k conversion at 63, no conversion at 64.
+    // At 65, IRMAA looks back to 63's MAGI → high tier. At 66, looks back to
+    // 64 → much lower. Net premium at 65 > net premium at 66.
+    const base: CoreConfig = {
+      ...BASE_CORE, age: 62, retirementAge: 62, endAge: 70,
+      annualIncome: 0, monthlySpending: 3_000,
+      traditional: 1_500_000, afterTax: 200_000, afterTaxBasis: 200_000, roth: 100_000, hsa: 0,
+      socialSecurity: null,
+      medicareEnabled: true,
+      // Single one-year conversion at 63 (fromAge = toAge = 63)
+      rothConversions: [{ fromAge: 63, toAge: 63, targetBracketTop: 400_000 }],
+    };
+    const ticks = simulate(base, BASE_ASSUMPTIONS, BASE_SLIDERS);
+
+    // We can't read IRMAA directly from Tick, but we can compare portfolio
+    // trajectory: the 65→66 drop in healthcare cost (lookback 63 → 64) should
+    // leave the 66 net worth relatively higher than it would be with flat IRMAA.
+    const at65 = ticks.find((t) => t.age === 65)!;
+    const at66 = ticks.find((t) => t.age === 66)!;
+    const at67 = ticks.find((t) => t.age === 67)!;
+    // Sanity: sim ran through all years
+    expect(at65 && at66 && at67).toBeTruthy();
+    // During year 65 the lookback reads age-63 MAGI (conversion year, top
+    // tier) → high IRMAA drag. During year 66 the lookback reads age-64
+    // (no conversion) → low/zero IRMAA. So year-65's net-worth growth
+    // (delta 65→66) should be SMALLER than year-66's (delta 66→67).
+    const delta65to66 = at66.netWorth - at65.netWorth;
+    const delta66to67 = at67.netWorth - at66.netWorth;
+    expect(delta66to67).toBeGreaterThan(delta65to66);
   });
 });

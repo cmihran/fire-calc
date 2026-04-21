@@ -132,6 +132,69 @@ export const AMT_PHASEOUT_RATE = 0.25;
 export const AMT_LOWER_RATE = 0.26;
 export const AMT_UPPER_RATE = 0.28;
 
+// ─── Medicare IRMAA (2025 tiers + premiums, project from 2026 base) ──────
+// Per-person monthly surcharges added to the Part B / Part D base premium
+// when the beneficiary's MAGI from 2 years prior exceeds a tier threshold.
+// MFJ uses separate (not strictly 2×) thresholds — the top tier caps at
+// $750k instead of $1M. Single-filer thresholds inflate with bracketIndexing;
+// the surcharge amounts and base premium inflate with general inflation
+// (Medicare premiums historically grow faster than CPI, but we keep it
+// simple and use `inflation` as the proxy).
+export interface IRMAATier {
+  minMagi: number;           // lower bound, today's dollars (base-year)
+  partBSurcharge: number;    // monthly $, today's dollars
+  partDSurcharge: number;    // monthly $, today's dollars
+}
+
+const IRMAA_TIERS_BASE: Record<FilingStatus, IRMAATier[]> = {
+  single: [
+    { minMagi: 0,        partBSurcharge: 0,       partDSurcharge: 0 },
+    { minMagi: 106_000,  partBSurcharge: 74.00,   partDSurcharge: 13.70 },
+    { minMagi: 133_000,  partBSurcharge: 185.00,  partDSurcharge: 35.30 },
+    { minMagi: 167_000,  partBSurcharge: 295.90,  partDSurcharge: 57.00 },
+    { minMagi: 200_000,  partBSurcharge: 406.90,  partDSurcharge: 78.60 },
+    { minMagi: 500_000,  partBSurcharge: 443.90,  partDSurcharge: 85.80 },
+  ],
+  married_filing_jointly: [
+    { minMagi: 0,        partBSurcharge: 0,       partDSurcharge: 0 },
+    { minMagi: 212_000,  partBSurcharge: 74.00,   partDSurcharge: 13.70 },
+    { minMagi: 266_000,  partBSurcharge: 185.00,  partDSurcharge: 35.30 },
+    { minMagi: 334_000,  partBSurcharge: 295.90,  partDSurcharge: 57.00 },
+    { minMagi: 400_000,  partBSurcharge: 406.90,  partDSurcharge: 78.60 },
+    { minMagi: 750_000,  partBSurcharge: 443.90,  partDSurcharge: 85.80 },
+  ],
+};
+
+// Base monthly Part B premium, 2025. No Part D base — plan-specific, varies
+// widely; we only model the IRMAA *surcharge* on Part D (which hits everyone
+// above the threshold regardless of their plan), leaving the base plan
+// premium absorbed in `annualSpending`.
+export const BASE_PART_B_PREMIUM_MONTHLY = 185.00;
+
+/**
+ * Look up IRMAA tier-indexed thresholds + surcharges for `year`. Thresholds
+ * inflate with bracketIndexing; surcharges and base Part B premium inflate
+ * with general inflation.
+ */
+export function getIRMAATable(
+  year: number,
+  filingStatus: FilingStatus,
+  assumptions: Assumptions,
+): { tiers: IRMAATier[]; basePartBMonthly: number } {
+  const yearsAhead = Math.max(0, year - BASE_YEAR);
+  const thresholdFactor = Math.pow(1 + assumptions.bracketIndexing, yearsAhead);
+  const premiumFactor = Math.pow(1 + assumptions.inflation, yearsAhead);
+  const base = IRMAA_TIERS_BASE[filingStatus];
+  return {
+    tiers: base.map((t) => ({
+      minMagi: Math.round(t.minMagi * thresholdFactor),
+      partBSurcharge: t.partBSurcharge * premiumFactor,
+      partDSurcharge: t.partDSurcharge * premiumFactor,
+    })),
+    basePartBMonthly: BASE_PART_B_PREMIUM_MONTHLY * premiumFactor,
+  };
+}
+
 // ─── Public shape ────────────────────────────────────────────────────────
 export interface YearConstants {
   year: number;

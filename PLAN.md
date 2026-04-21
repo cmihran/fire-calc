@@ -160,6 +160,11 @@ Simplification: doesn't distinguish 401k-of-last-employer from rolled-over IRA. 
 
 **72(t) SEPP → TODO.md.** Meaningfully more complex than this engine benefits from: requires one of 3 IRS methods (RMD, fixed amortization, fixed annuitization), mandatory continuation for 5 years or until 59.5 (longer), and retroactive 10% penalty on all prior withdrawals if broken. User-supplied fixed-annual-amount is a plausible V1, but the enforcement logic is where it gets gnarly. Rule of 55 covers the 55-59 case cleanly; 72(t) is only needed for <55 retirements, which is rare even for FIRE.
 
+### P2.6 — Medicare IRMAA ✅ (done)
+`computeIRMAA({ magi, filingStatus, enrollees, year, assumptions })` in `healthcare.ts` returns base Part B monthly + tiered Part B / Part D surcharges using the 6-tier 2025 schedule (single + MFJ; top MFJ tier caps at $750k, not $1M). Simulate maintains a `magiHistory[age]` buffer of post-drawdown MAGI so that age 65+ IRMAA reads age-2's MAGI (the statutory 2-year lookback). Enrollees derived from filing status (1 single, 2 MFJ). `CoreConfig.medicareEnabled` defaults true; IRMAA cost rolls into `cashOut` (invisible to `taxes` — it's a premium, not a tax).
+
+Not yet: married-filing-separately's narrower schedule, Medicare premium inflation > CPI (we use `inflation` as a proxy — historically premiums grew ~5-7%/yr vs ~3% CPI), Part D base premium (plan-specific, absorbed in `annualSpending`).
+
 ---
 
 ## Deferred → TODO.md

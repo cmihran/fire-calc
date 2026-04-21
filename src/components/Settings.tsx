@@ -659,6 +659,16 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
               onChange={(v) => set('acaSLCSPAnnual', v)} />
           </div>
         )}
+        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.4rem' }}>
+          <input
+            type="checkbox"
+            checked={core.medicareEnabled}
+            onChange={(e) => set('medicareEnabled', e.target.checked)}
+          />
+          <span className="field__label" style={{ margin: 0 }}>
+            Medicare + IRMAA at 65+
+          </span>
+        </label>
       </div>
 
       <div className="settings__group">

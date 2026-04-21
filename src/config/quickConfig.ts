@@ -44,6 +44,7 @@ export const YOU: CoreConfig = {
   acaEnabled: false,             // opt-in; enable if you plan to FIRE before 65
   householdSize: 1,
   acaSLCSPAnnual: 8_000,         // today's $ median single-person benchmark — edit per your region
+  medicareEnabled: true,         // Part B + IRMAA at 65+; only skip if modeling non-enrollment
 };
 
 // ============================================================================

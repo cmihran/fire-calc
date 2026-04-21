@@ -251,6 +251,44 @@ test.describe('Healthcare (ACA)', () => {
   });
 });
 
+test.describe('Healthcare (Medicare IRMAA)', () => {
+  test('toggling Medicare changes the post-65 net-worth trajectory', async ({ page }) => {
+    await load(page);
+    // Build a late-career scenario where IRMAA hits immediately at 65 and
+    // ending NW is small enough ($X.XXM) that ~$100k cumulative drag is visible.
+    const currentAge = page.locator('.field', { hasText: 'Age' }).locator('input').first();
+    await currentAge.fill('65');
+    await currentAge.press('Tab');
+    const retire = page.locator('.field', { hasText: 'Retire' }).locator('input').first();
+    await retire.fill('65');
+    await retire.press('Tab');
+    const end = page.locator('.field', { hasText: 'End' }).locator('input').first();
+    await end.fill('85');
+    await end.press('Tab');
+    const trad = page.locator('.field', { hasText: 'Traditional' }).locator('input').first();
+    await trad.fill('2500000');
+    await trad.press('Tab');
+    const spending = page.locator('.field', { hasText: 'Monthly spend' }).locator('input').first();
+    await spending.fill('9000');
+    await spending.press('Tab');
+    await page.waitForTimeout(200);
+
+    // Default has medicareEnabled = true. Net worth at 85 (end of sim).
+    const row85 = page.locator('.year-table tbody tr', { hasText: /^85\b/ }).first();
+    const withMedicareNW = await row85.locator('td').nth(4).textContent();
+
+    // Toggle Medicare off.
+    const medicareToggle = page.locator('label', { hasText: 'Medicare + IRMAA at 65+' })
+      .locator('input[type="checkbox"]');
+    await medicareToggle.uncheck();
+    await page.waitForTimeout(200);
+
+    const withoutMedicareNW = await row85.locator('td').nth(4).textContent();
+    // Turning Medicare off skips Part B + IRMAA → more cash retained → higher net worth
+    expect(withoutMedicareNW).not.toBe(withMedicareNW);
+  });
+});
+
 test.describe('Reset', () => {
   test('Reset restores defaults', async ({ page }) => {
     await load(page);

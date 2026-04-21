@@ -253,6 +253,13 @@ export interface CoreConfig {
    * KFF calculator. ~$8k/yr is a rough middle-aged single-person median.
    */
   acaSLCSPAnnual: number;
+  /**
+   * Medicare enrollment at 65+. When on, the sim adds the base Part B premium
+   * plus any IRMAA Part B/D surcharges (based on MAGI from 2 years prior) to
+   * annual cash outflow. Enrollees = 1 for single, 2 for MFJ — no separate
+   * user input.
+   */
+  medicareEnabled: boolean;
 }
 
 export interface Assumptions {
