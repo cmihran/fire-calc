@@ -194,19 +194,23 @@ test.describe('Equity comp', () => {
     expect(rsuRate).not.toBe(baseRate);
   });
 
-  test('adding an ISO exercise leaves regular tax essentially unchanged', async ({ page }) => {
+  test('large ISO exercise raises effective tax rate via AMT', async ({ page }) => {
     await load(page);
     const row = page.locator('.year-table tbody tr', { hasText: /^35\b/ }).first();
     const baseRate = await row.locator('td').nth(2).textContent();
 
     await page.locator('.roth-conversions__add', { hasText: '+ Exercise' }).click();
-    // Default is NSO at age 35 $100k. Switch to ISO — AMT not modeled yet.
     const exerciseRow = page.locator('.roth-conversions__row.equity-editor__row--exercise');
     await exerciseRow.locator('select').selectOption('ISO');
+    // Exercise row inputs: [Age, Amount]. (Type is a <select>, not an input.)
+    // Default amount $100k is too small to trigger AMT; bump to $500k.
+    const amountInput = exerciseRow.locator('input').nth(1);
+    await amountInput.fill('500000');
+    await amountInput.press('Tab');
     await page.waitForTimeout(150);
 
     const isoRate = await row.locator('td').nth(2).textContent();
-    expect(isoRate).toBe(baseRate);
+    expect(isoRate).not.toBe(baseRate);
   });
 });
 

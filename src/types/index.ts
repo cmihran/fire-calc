@@ -57,7 +57,8 @@ export const ZERO_INCOME: IncomeSources = {
 export interface TaxResult {
   federalOrdinary: number;
   federalLTCG: number;
-  federal: number;                // ordinary + LTCG
+  amt: number;                    // AMT addition over regular federal (≥ 0)
+  federal: number;                // ordinary + LTCG + amt
   state: number;
   local: number;
   fica: number;

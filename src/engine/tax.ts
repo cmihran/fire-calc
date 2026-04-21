@@ -8,6 +8,7 @@ import {
   NIIT_RATE, NIIT_THRESHOLD,
   SS_PROVISIONAL_BASE, SS_PROVISIONAL_ADJUSTED,
   SALT_CAP,
+  AMT_PHASEOUT_RATE, AMT_LOWER_RATE, AMT_UPPER_RATE,
 } from './constants';
 
 // ─── Bracket math ────────────────────────────────────────────────────────
@@ -169,6 +170,54 @@ export function estimateLTCGRate(
   return federal + niit + stateRate;
 }
 
+// ─── AMT ─────────────────────────────────────────────────────────────────
+/**
+ * Tentative Minimum Tax per Form 6251. The caller is responsible for
+ * computing `amtiOrdinary` correctly for their deduction path:
+ *   - std path:      AMTI = (AGI - stdDed) + ISO bargain
+ *   - itemized path: AMTI = (AGI - itemized) + saltAddback + ISO bargain
+ *     (equivalent to AGI - mortgageInterest + ISO since SALT is added back)
+ * ISO bargain is the only preference we model; misc 2% deductions, depletion,
+ * private-activity bond interest, etc. are out of scope.
+ *
+ * Exemption phases out at 25¢ per $1 over the threshold (using total AMTI
+ * including LTCG/QD). 26% on the first $amtRateBreak of AMT ordinary taxable,
+ * 28% above. LTCG/QD (and §121 home-sale gain) are taxed at LTCG brackets
+ * stacked on top of AMT ordinary taxable — same preferential rates as regular
+ * tax.
+ *
+ * Returns the positive addition (TMT - regularFederal), never negative.
+ */
+export function calcAMT(args: {
+  amtiOrdinary: number;
+  ltcgAndPreferential: number;
+  regularFederal: number;        // ordinary + LTCG from regular calc
+  filingStatus: FilingStatus;
+  yc: YearConstants;
+}): number {
+  const { amtiOrdinary, ltcgAndPreferential, regularFederal, filingStatus, yc } = args;
+  const amtiTotal = Math.max(0, amtiOrdinary + ltcgAndPreferential);
+
+  // Exemption with phase-out
+  const baseExemption = yc.amtExemption[filingStatus];
+  const phaseStart = yc.amtPhaseoutThreshold[filingStatus];
+  const phaseReduction = Math.max(0, (amtiTotal - phaseStart) * AMT_PHASEOUT_RATE);
+  const exemption = Math.max(0, baseExemption - phaseReduction);
+
+  // Ordinary-portion tentative tax
+  const amtiOrdTaxable = Math.max(0, amtiOrdinary - exemption);
+  const rateBreak = yc.amtRateBreak[filingStatus];
+  const ordTax = amtiOrdTaxable <= rateBreak
+    ? amtiOrdTaxable * AMT_LOWER_RATE
+    : rateBreak * AMT_LOWER_RATE + (amtiOrdTaxable - rateBreak) * AMT_UPPER_RATE;
+
+  // LTCG/QD/§121 gain taxed at LTCG brackets, stacked on AMT ordinary taxable
+  const ltcgTax = calcFederalLTCGTax(amtiOrdTaxable, ltcgAndPreferential, yc.ltcgBrackets[filingStatus]);
+
+  const tentativeMin = ordTax + ltcgTax;
+  return Math.max(0, tentativeMin - regularFederal);
+}
+
 // ─── State retirement income exclusion ───────────────────────────────────
 /**
  * Returns the dollar amount to subtract from state taxable income for
@@ -253,7 +302,23 @@ export function calcTax(args: TaxInputs): TaxResult {
   const federalLTCG = calcFederalLTCGTax(
     fedOrdinaryTaxable, ltcgAndPreferential, yc.ltcgBrackets[filingStatus],
   );
-  const federal = federalOrdinary + federalLTCG;
+  const regularFederal = federalOrdinary + federalLTCG;
+
+  // AMT: Form 6251 takes regular federal taxable income (post-deduction) and
+  // adds back SALT (only if itemizing) + ISO bargain. Std-deduction filers
+  // get no SALT addback since they never deducted it. The std deduction is
+  // NOT added back — AMT's exemption replaces it.
+  const saltPaid = Math.min(
+    SALT_CAP[filingStatus], stateTax + localTax + sources.propertyTaxPaid,
+  );
+  const isItemizing = itemized > fedStd;
+  const amtiOrdinary =
+    fedOrdinaryTaxable + (isItemizing ? saltPaid : 0) + sources.isoBargain;
+  const amt = calcAMT({
+    amtiOrdinary, ltcgAndPreferential,
+    regularFederal, filingStatus, yc,
+  });
+  const federal = regularFederal + amt;
 
   // NIIT on investment income (includes homeSaleGain)
   const magi = fedOrdinaryTaxable + ltcgAndPreferential;
@@ -268,6 +333,7 @@ export function calcTax(args: TaxInputs): TaxResult {
   return {
     federalOrdinary,
     federalLTCG,
+    amt,
     federal,
     state: stateTax,
     local: localTax,

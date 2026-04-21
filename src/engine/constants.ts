@@ -113,6 +113,25 @@ const ROTH_PHASEOUT_BASE: Record<FilingStatus, { floor: number; ceiling: number 
   married_filing_jointly: { floor: 236_000, ceiling: 246_000 },
 };
 
+// ─── AMT (2025 figures projected to 2026 base, index with bracketIndexing) ─
+// Exemption amount, 25%-per-dollar phase-out threshold, and the 26/28% rate
+// break. AMT rates are statutory (26%/28%) and do not index.
+const AMT_EXEMPTION_BASE: Record<FilingStatus, number> = {
+  single: 88_100,
+  married_filing_jointly: 137_000,
+};
+const AMT_PHASEOUT_THRESHOLD_BASE: Record<FilingStatus, number> = {
+  single: 626_350,
+  married_filing_jointly: 1_252_700,
+};
+const AMT_RATE_BREAK_BASE: Record<FilingStatus, number> = {
+  single: 232_600,
+  married_filing_jointly: 232_600,
+};
+export const AMT_PHASEOUT_RATE = 0.25;
+export const AMT_LOWER_RATE = 0.26;
+export const AMT_UPPER_RATE = 0.28;
+
 // ─── Public shape ────────────────────────────────────────────────────────
 export interface YearConstants {
   year: number;
@@ -128,6 +147,9 @@ export interface YearConstants {
   limitHSASingle: number;
   limitHSACatchup: number;
   rothPhaseout: Record<FilingStatus, { floor: number; ceiling: number }>;
+  amtExemption: Record<FilingStatus, number>;
+  amtPhaseoutThreshold: Record<FilingStatus, number>;
+  amtRateBreak: Record<FilingStatus, number>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -191,6 +213,9 @@ export function getYearConstants(year: number, assumptions: Assumptions): YearCo
     limitHSASingle: Math.round(LIMIT_HSA_SINGLE_BASE * limitFactor),
     limitHSACatchup: Math.round(LIMIT_HSA_CATCHUP_BASE * limitFactor),
     rothPhaseout: growPhaseout(bracketFactor),
+    amtExemption: growNumberByFS(AMT_EXEMPTION_BASE, bracketFactor),
+    amtPhaseoutThreshold: growNumberByFS(AMT_PHASEOUT_THRESHOLD_BASE, bracketFactor),
+    amtRateBreak: growNumberByFS(AMT_RATE_BREAK_BASE, bracketFactor),
   };
 }
 

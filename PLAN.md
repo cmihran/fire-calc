@@ -138,8 +138,10 @@ Stage only after Phase 1 is stable. Each of these is meaningfully larger than P1
 
 Not yet: ESPP qualifying-vs-disqualifying disposition logic (treated as disqualifying), RSU growth rate (constant nominal across window — user adds subsequent windows for growth).
 
-### P2.2 — AMT
-New function `calcAMT(sources, year, filingStatus)` alongside regular federal. Tentative minimum tax = (AMT income − AMT exemption phase-out) × AMT rate; owe max(regular, AMT). Main trigger: ISO exercises. Exemption 2026 ~$88,100 single / $137,000 MFJ; phase-out at $626k/$1.25M. Relatively self-contained once `IncomeSources` exists.
+### P2.2 — AMT ✅ (done)
+`calcAMT({ amtiOrdinary, ltcgAndQD, regularFederal, filingStatus, yc })` in `tax.ts` returns `max(0, TMT − regularFederal)`. AMTI ordinary = AGI + ISO bargain (no std deduction addback — we're on the std-deduction path). Exemption phases out at 25¢/$ above the threshold (year-indexed). 26% below rate-break, 28% above; LTCG/QD taxed at LTCG brackets stacked on AMT ordinary taxable. Integrated into `calcTax`: `federal = regularFederal + amt`.
+
+Not yet: SALT addback and misc itemized AMT adjustments (only relevant for itemizers, which we don't model).
 
 ### P2.3 — ACA Premium Tax Credit
 For early retirees bridging to Medicare (age < 65 + no employer coverage). New assumption: `healthcareCoverage: 'employer' | 'aca' | 'medicare' | 'none'`. Premium credit formula based on FPL × household size, MAGI-dependent. Big for anyone retiring before 65. Separate concept from tax — model as a reduction to "spending" not a tax credit, to match how cash flows work in the sim.

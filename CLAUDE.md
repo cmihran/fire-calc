@@ -53,9 +53,9 @@ The app compares named what-if configurations (e.g. "FIRE @ 50" vs "Big Tech CA"
 
 ## Tax engine coverage
 
-Modeled: federal progressive brackets (year-indexed from 2026 base), all 50 states + DC with per-state retirement income exclusion and SS taxability, city/local (NYC + Yonkers, user-selectable), FICA (SS wage cap + Additional Medicare), NIIT (frozen thresholds), LTCG stacked on ordinary (0/15/20), Roth IRA MAGI phase-out (year-indexed), HSA with triple tax advantage, Social Security (claim-age adjustment + provisional-income taxation), RMDs (SECURE 2.0 schedule), Roth conversion ladders (user-configured age windows filling to bracket target), real basis tracking on taxable account with qualified/ordinary dividend + realized-gain decomposition, equity comp (RSU vest windows + NSO/ISO/ESPP exercise events; ISO bargain stashed for AMT), primary-residence model (mortgage amortization, property tax, §121 exclusion on sale), itemized deduction (SALT cap + mortgage interest) vs standard deduction.
+Modeled: federal progressive brackets (year-indexed from 2026 base), all 50 states + DC with per-state retirement income exclusion and SS taxability, city/local (NYC + Yonkers, user-selectable), FICA (SS wage cap + Additional Medicare), NIIT (frozen thresholds), LTCG stacked on ordinary (0/15/20), Roth IRA MAGI phase-out (year-indexed), HSA with triple tax advantage, Social Security (claim-age adjustment + provisional-income taxation), RMDs (SECURE 2.0 schedule), Roth conversion ladders (user-configured age windows filling to bracket target), real basis tracking on taxable account with qualified/ordinary dividend + realized-gain decomposition, equity comp (RSU vest windows + NSO/ISO/ESPP exercise events), primary-residence model (mortgage amortization, property tax, §121 exclusion on sale), itemized deduction (SALT cap + mortgage interest) vs standard deduction, AMT (Form 6251 with SALT addback when itemizing + ISO bargain preference).
 
-Deferred to `PLAN.md` / `TODO.md`: AMT, ACA PTC, Rule of 55, 72(t) SEPP, QSBS, QBI, SE tax, stochastic returns, two-earner households, full per-state local coverage beyond NY.
+Deferred to `PLAN.md` / `TODO.md`: ACA PTC, Rule of 55, 72(t) SEPP, QSBS, QBI, SE tax, stochastic returns, two-earner households, full per-state local coverage beyond NY.
 
 ## Key conventions
 

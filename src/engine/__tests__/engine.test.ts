@@ -4,7 +4,7 @@ import { ZERO_INCOME } from '../../types';
 import {
   calcBracketTax, calcFICA, calcNIIT, calcTax, estimateLTCGRate,
   federalLTCGRate, socialSecurityTaxable, calcFederalLTCGTax,
-  grossUpTraditionalWithdrawal,
+  grossUpTraditionalWithdrawal, calcAMT,
 } from '../tax';
 import {
   annualMortgagePayment, amortizeYear, section121Exclusion, computeSaleOutcome,
@@ -282,6 +282,61 @@ describe('grossUpTraditionalWithdrawal', () => {
   });
 });
 
+// ─── AMT ─────────────────────────────────────────────────────────────────
+describe('calcAMT', () => {
+  const yc = getYearConstants(BASE_YEAR, BASE_ASSUMPTIONS);
+  it('zero when tentative min <= regular federal', () => {
+    // Modest income, no preferences — regular tax dominates
+    const amt = calcAMT({
+      amtiOrdinary: 80_000, ltcgAndPreferential: 0,
+      regularFederal: 12_000, filingStatus: 'single', yc,
+    });
+    expect(amt).toBe(0);
+  });
+  it('fires when a large ISO bargain blows up AMTI', () => {
+    // $500k ISO bargain on top of modest AGI — regular stays low, AMT kicks in
+    const amt = calcAMT({
+      amtiOrdinary: 100_000 + 500_000, ltcgAndPreferential: 0,
+      regularFederal: 13_000, filingStatus: 'single', yc,
+    });
+    expect(amt).toBeGreaterThan(50_000);
+  });
+  it('exemption phases out at high AMTI', () => {
+    // Well above phase-out start (~$626k single in 2025)
+    const modest = calcAMT({
+      amtiOrdinary: 300_000, ltcgAndPreferential: 0,
+      regularFederal: 60_000, filingStatus: 'single', yc,
+    });
+    const huge = calcAMT({
+      amtiOrdinary: 2_000_000, ltcgAndPreferential: 0,
+      regularFederal: 500_000, filingStatus: 'single', yc,
+    });
+    // At $2M AMTI the exemption is fully phased out, so AMT applies the 28%
+    // rate to a much larger base. AMT should be materially non-zero even
+    // after subtracting regular federal.
+    expect(huge).toBeGreaterThanOrEqual(0);
+    expect(huge + 500_000).toBeGreaterThan(modest + 60_000);
+  });
+});
+
+describe('calcTax with AMT integration', () => {
+  it('ISO bargain raises total federal via AMT', () => {
+    const base: IncomeSources = { ...ZERO_INCOME, w2: 150_000 };
+    const withISO: IncomeSources = { ...base, isoBargain: 500_000 };
+    const args = {
+      pretax401k: 0, hsaPayrollContribution: 0,
+      filingStatus: 'single' as const,
+      state: 'TX' as const, city: null,
+      age: 40, year: BASE_YEAR, assumptions: BASE_ASSUMPTIONS,
+    };
+    const noISO = calcTax({ ...args, sources: base });
+    const iso = calcTax({ ...args, sources: withISO });
+    expect(noISO.amt).toBe(0);
+    expect(iso.amt).toBeGreaterThan(50_000);
+    expect(iso.federal).toBeGreaterThan(noISO.federal);
+  });
+});
+
 // ─── Equity comp ─────────────────────────────────────────────────────────
 describe('equityForYear', () => {
   it('returns zero when plan is null/undefined', () => {
@@ -526,7 +581,7 @@ describe('simulate (end-to-end)', () => {
     const outOfWindowDelta = rsu40.taxes! - base40.taxes!;
     expect(outOfWindowDelta).toBeLessThan(inWindowDelta * 0.1);
   });
-  it('ISO exercise does NOT raise regular federal tax (AMT deferred)', () => {
+  it('ISO exercise raises federal via AMT', () => {
     const base = { ...BASE_CORE, pretax401kPct: 0, rothIRAPct: 0 };
     const withISO: CoreConfig = {
       ...base,
@@ -539,8 +594,8 @@ describe('simulate (end-to-end)', () => {
     const isoTicks = simulate(withISO, BASE_ASSUMPTIONS, BASE_SLIDERS);
     const base40 = baseTicks.find((t) => t.age === 40)!;
     const iso40 = isoTicks.find((t) => t.age === 40)!;
-    // Regular federal tax should be essentially unchanged — only AMT would catch ISO
-    expect(Math.abs(iso40.taxes! - base40.taxes!)).toBeLessThan(100);
+    // AMT catches the ISO bargain element even though regular tax wouldn't.
+    expect(iso40.taxes!).toBeGreaterThan(base40.taxes! + 50_000);
   });
   it('NSO exercise raises ordinary + FICA at the exercise age only', () => {
     const base = { ...BASE_CORE, pretax401kPct: 0, rothIRAPct: 0 };
