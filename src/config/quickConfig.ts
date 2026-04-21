@@ -40,6 +40,7 @@ export const YOU: CoreConfig = {
   currentHome: null,             // set to a HomeHolding if you currently own
   homeEvents: [],                // add buy/sell events via the Home editor
   equityComp: { vests: [], exercises: [] },
+  rule55Enabled: true,           // auto-qualifies if you retire at 55+; turn off if you rolled 401k → IRA
   acaEnabled: false,             // opt-in; enable if you plan to FIRE before 65
   householdSize: 1,
   acaSLCSPAnnual: 8_000,         // today's $ median single-person benchmark — edit per your region

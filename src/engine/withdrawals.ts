@@ -23,6 +23,12 @@ export interface DrawdownContext {
   assumptions: Assumptions;
   /** Income already in sources (comp, SS, dividends, conversions, RMDs) before this drawdown stacks on top. */
   baseSources: IncomeSources;
+  /**
+   * When true, the 10% early-withdrawal penalty on Traditional is waived.
+   * Used for Rule of 55 (IRC §72(t)(2)(A)(v)) when the user retired at 55+.
+   * Caller is responsible for verifying the age/retirement conditions.
+   */
+  penaltyExempt?: boolean;
 }
 
 export interface DrawdownResult {
@@ -151,12 +157,14 @@ export function drawDown(
     }
   }
 
-  // 2) Traditional — ordinary income + 10% penalty if age < 59.5
+  // 2) Traditional — ordinary income + 10% penalty if age < 59.5 (waived
+  //    when penaltyExempt is set, e.g. under Rule of 55).
   if (b.traditional > 0 && needNet > 0) {
     const stackedBase: IncomeSources = { ...ctx.baseSources, ltcg: ctx.baseSources.ltcg + added.ltcg };
     const g = grossUpTraditionalWithdrawal(needNet, stackedBase, {
       filingStatus: ctx.filingStatus, state: ctx.state, city: ctx.city,
       age: ctx.age, year: ctx.year, assumptions: ctx.assumptions,
+      penaltyExempt: ctx.penaltyExempt,
     });
     if (g.gross <= b.traditional) {
       b.traditional -= g.gross;
@@ -177,7 +185,7 @@ export function drawDown(
         filingStatus: ctx.filingStatus, state: ctx.state, city: ctx.city,
         age: ctx.age, year: ctx.year, assumptions: ctx.assumptions,
       });
-      const drainedPenalty = ctx.age < 59.5 ? drained * 0.1 : 0;
+      const drainedPenalty = ctx.penaltyExempt || ctx.age >= 59.5 ? 0 : drained * 0.1;
       const marginal = withT.total - without.total;
       tax += marginal;
       penalty += drainedPenalty;

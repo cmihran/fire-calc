@@ -351,6 +351,9 @@ export function calcTax(args: TaxInputs): TaxResult {
  * ordinary-income tax on `W` plus a 10% penalty if age < 59.5. Converges in
  * 4 fixed-point iterations. Takes a base IncomeSources so the withdrawal is
  * stacked on top of any SS/other income that year.
+ *
+ * `penaltyExempt: true` skips the 10% penalty (used for Rule of 55 and
+ * similar exceptions); age check becomes moot.
  */
 export function grossUpTraditionalWithdrawal(
   needNet: number,
@@ -358,9 +361,10 @@ export function grossUpTraditionalWithdrawal(
   args: Omit<TaxInputs, 'sources' | 'pretax401k' | 'hsaPayrollContribution'> & {
     pretax401k?: number;
     hsaPayrollContribution?: number;
+    penaltyExempt?: boolean;
   },
 ): { gross: number; tax: number; penalty: number } {
-  const penaltyRate = args.age < 59.5 ? 0.1 : 0;
+  const penaltyRate = args.penaltyExempt || args.age >= 59.5 ? 0 : 0.1;
   const taxAtWithdrawal = (W: number): number => {
     const sources: IncomeSources = { ...baseSources, traditionalWithdrawal: baseSources.traditionalWithdrawal + W };
     const r = calcTax({

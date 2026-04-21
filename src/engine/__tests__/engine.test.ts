@@ -55,6 +55,7 @@ const BASE_CORE: CoreConfig = {
   currentHome: null,
   homeEvents: [],
   equityComp: { vests: [], exercises: [] },
+  rule55Enabled: true,
   acaEnabled: false,
   householdSize: 1,
   acaSLCSPAnnual: 8_000,
@@ -286,6 +287,14 @@ describe('grossUpTraditionalWithdrawal', () => {
     const g = grossUpTraditionalWithdrawal(50_000, { ...ZERO_INCOME }, { ...base, age: 65 });
     expect(g.penalty).toBe(0);
   });
+  it('penaltyExempt waives the 10% even pre-59.5 (Rule of 55)', () => {
+    const withPenalty = grossUpTraditionalWithdrawal(50_000, { ...ZERO_INCOME }, { ...base, age: 57 });
+    const waived = grossUpTraditionalWithdrawal(50_000, { ...ZERO_INCOME }, { ...base, age: 57, penaltyExempt: true });
+    expect(withPenalty.penalty).toBeGreaterThan(0);
+    expect(waived.penalty).toBe(0);
+    // Waiver means a smaller gross can still net the same: gross(waived) < gross(penalty)
+    expect(waived.gross).toBeLessThan(withPenalty.gross);
+  });
 });
 
 // ─── AMT ─────────────────────────────────────────────────────────────────
@@ -485,6 +494,18 @@ describe('drawDown', () => {
       { traditional: 100_000, roth: 0, hsa: 0, taxableBalance: 0, taxableBasis: 0 },
       { ...ctx, age: 45 });
     expect(r.penalty).toBeGreaterThan(0);
+  });
+  it('penaltyExempt waives the 10% (Rule of 55 path)', () => {
+    const withPenalty = drawDown(10_000,
+      { traditional: 100_000, roth: 0, hsa: 0, taxableBalance: 0, taxableBasis: 0 },
+      { ...ctx, age: 57 });
+    const waived = drawDown(10_000,
+      { traditional: 100_000, roth: 0, hsa: 0, taxableBalance: 0, taxableBasis: 0 },
+      { ...ctx, age: 57, penaltyExempt: true });
+    expect(withPenalty.penalty).toBeGreaterThan(0);
+    expect(waived.penalty).toBe(0);
+    // Tax is the same, but total (tax + penalty) is lower when exempt
+    expect(waived.tax + waived.penalty).toBeLessThan(withPenalty.tax + withPenalty.penalty);
   });
 });
 
@@ -1019,6 +1040,47 @@ describe('computeACAPremiumAndCredit', () => {
   it('PTC never exceeds SLCSP', () => {
     const r = computeACAPremiumAndCredit({ ...args, magi: 0 });
     expect(r.ptc).toBeLessThanOrEqual(r.slcsp);
+  });
+});
+
+describe('simulate with Rule of 55', () => {
+  it('FIRE-at-55 pays no Traditional penalty pre-59.5 when rule55 is on', () => {
+    // Base: heavy Traditional balance, zero taxable to force Traditional draws.
+    const base: CoreConfig = {
+      ...BASE_CORE, age: 54, retirementAge: 55, endAge: 65,
+      annualIncome: 150_000, monthlySpending: 4_000,
+      traditional: 1_200_000, afterTax: 0, afterTaxBasis: 0, roth: 0, hsa: 0,
+      socialSecurity: null,
+    };
+    const withRule = simulate({ ...base, rule55Enabled: true }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const withoutRule = simulate({ ...base, rule55Enabled: false }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+
+    // At age 57 (inside 55-59.5 window), with-rule should have strictly less
+    // withdrawalTax (which aggregates tax + penalty).
+    const with57 = withRule.find((t) => t.age === 57)!;
+    const without57 = withoutRule.find((t) => t.age === 57)!;
+    expect(with57.withdrawalTax!).toBeLessThan(without57.withdrawalTax!);
+    // Over the 55-59 window, net worth at 60 should be higher with rule 55
+    const with60 = withRule.find((t) => t.age === 60)!;
+    const without60 = withoutRule.find((t) => t.age === 60)!;
+    expect(with60.netWorth).toBeGreaterThan(without60.netWorth);
+  });
+
+  it('Rule of 55 does not apply if retirement age < 55', () => {
+    const base: CoreConfig = {
+      ...BASE_CORE, age: 48, retirementAge: 50, endAge: 62,
+      annualIncome: 150_000, monthlySpending: 4_000,
+      traditional: 1_000_000, afterTax: 0, afterTaxBasis: 0, roth: 0, hsa: 0,
+      socialSecurity: null,
+    };
+    const withRule = simulate({ ...base, rule55Enabled: true }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const withoutRule = simulate({ ...base, rule55Enabled: false }, BASE_ASSUMPTIONS, BASE_SLIDERS);
+
+    // Retirement at 50 → Rule of 55 not available (needed separation at 55+).
+    // Both trajectories should match (barring rounding).
+    const w55 = withRule.find((t) => t.age === 55)!;
+    const wo55 = withoutRule.find((t) => t.age === 55)!;
+    expect(w55.netWorth).toBe(wo55.netWorth);
   });
 });
 

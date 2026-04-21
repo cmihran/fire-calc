@@ -333,6 +333,12 @@ export function simulate(
       taxableBasis += discretionary;  // new buys have basis = cost
     } else {
       const needNet = -discretionary;
+      // Rule of 55: Traditional withdrawals are penalty-free from retirementAge
+      // through 59.5 if the user separated from service at 55+. Above 59.5
+      // the penalty never applies anyway, so the upper age check is implicit.
+      const rule55Exempt = core.rule55Enabled
+        && core.retirementAge >= 55
+        && age >= core.retirementAge;
       const result = drawDown(
         needNet,
         { traditional, roth, hsa, taxableBalance, taxableBasis },
@@ -340,6 +346,7 @@ export function simulate(
           age, year, filingStatus: assumptions.filingStatus,
           state: core.stateOfResidence, city: core.cityOfResidence,
           assumptions, baseSources: sources,
+          penaltyExempt: rule55Exempt,
         },
       );
       traditional = result.balances.traditional;

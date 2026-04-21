@@ -234,6 +234,15 @@ export interface CoreConfig {
   /** RSU vest windows + NSO/ISO/ESPP exercise events. */
   equityComp: EquityCompPlan;
 
+  /**
+   * IRC §72(t)(2)(A)(v) Rule of 55: if you separate from service in the
+   * calendar year you turn 55 or later, 401k withdrawals from that plan
+   * are exempt from the 10% early-withdrawal penalty. Simplification:
+   * applies to all Traditional balances from retirementAge through 59.5,
+   * if retirementAge ≥ 55.
+   */
+  rule55Enabled: boolean;
+
   /** Use ACA marketplace in pre-Medicare retirement gap (retirementAge..64). */
   acaEnabled: boolean;
   /** Household size for FPL lookup (self + spouse + dependents). */

@@ -54,6 +54,7 @@ function migrateCore(raw: Partial<CoreConfig> & Record<string, unknown>): CoreCo
             : [],
         }
       : { vests: [], exercises: [] },
+    rule55Enabled: typeof raw.rule55Enabled === 'boolean' ? raw.rule55Enabled : true,
     acaEnabled: typeof raw.acaEnabled === 'boolean' ? raw.acaEnabled : false,
     householdSize: typeof raw.householdSize === 'number' && raw.householdSize >= 1
       ? raw.householdSize

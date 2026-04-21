@@ -630,7 +630,17 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
       </div>
 
       <div className="settings__group">
-        <div className="settings__group-label">Healthcare (pre-Medicare gap)</div>
+        <div className="settings__group-label">Early retirement rules</div>
+        <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.4rem' }}>
+          <input
+            type="checkbox"
+            checked={core.rule55Enabled}
+            onChange={(e) => set('rule55Enabled', e.target.checked)}
+          />
+          <span className="field__label" style={{ margin: 0 }}>
+            Rule of 55 (no penalty on 401k at 55+)
+          </span>
+        </label>
         <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.4rem' }}>
           <input
             type="checkbox"

@@ -153,8 +153,12 @@ Not yet: AK/HI use higher FPL schedules (not modeled — few FIRE retirees); two
 ### P2.4 — Capital loss harvesting + carryforward
 Requires basis tracking (P0.2). Realize losses when market is down, offset STCG→LTCG→$3k ordinary per year, carry forward indefinitely. Needs: market volatility in the sim (currently no volatility — just smooth `expectedReturn`). So this implies stochastic returns, which is a bigger lift — **likely TODO.md candidate**.
 
-### P2.5 — Rule of 55 / 72(t) SEPP
-Rule of 55: if retirement age is 55-59, allow Traditional withdrawals penalty-free from 401k of last employer (not IRA). 72(t) SEPP: fixed equal payments using IRS amortization / annuitization method. Both slot into the withdrawal waterfall module (P0.4).
+### P2.5 — Rule of 55 / 72(t) SEPP — **Rule of 55 done; 72(t) deferred**
+**Rule of 55 ✅** (IRC §72(t)(2)(A)(v)): `penaltyExempt` flag threaded through `DrawdownContext` + `grossUpTraditionalWithdrawal`. Simulate gates on `rule55Enabled && retirementAge >= 55 && age >= retirementAge` — applies through 59.5, moot thereafter. Defaults to true (it's automatic if you qualify); user can disable for scenarios where all Traditional money was rolled to IRA.
+
+Simplification: doesn't distinguish 401k-of-last-employer from rolled-over IRA. If you roll everything to an IRA after retiring, Rule of 55 doesn't apply — user should disable the flag in that case.
+
+**72(t) SEPP → TODO.md.** Meaningfully more complex than this engine benefits from: requires one of 3 IRS methods (RMD, fixed amortization, fixed annuitization), mandatory continuation for 5 years or until 59.5 (longer), and retroactive 10% penalty on all prior withdrawals if broken. User-supplied fixed-annual-amount is a plausible V1, but the enforcement logic is where it gets gnarly. Rule of 55 covers the 55-59 case cleanly; 72(t) is only needed for <55 retirements, which is rare even for FIRE.
 
 ---
 

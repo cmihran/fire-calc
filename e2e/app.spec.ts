@@ -240,8 +240,8 @@ test.describe('Healthcare (ACA)', () => {
     const row65 = page.locator('.year-table tbody tr', { hasText: /^65\b/ }).first();
     const baseNW = await row65.locator('td').nth(4).textContent();
 
-    // Flip ACA on
-    const acaToggle = page.locator('.settings__group', { hasText: 'Healthcare' })
+    // Flip ACA on — scoped by the checkbox's sibling label text.
+    const acaToggle = page.locator('label', { hasText: 'Use ACA in gap' })
       .locator('input[type="checkbox"]');
     await acaToggle.check();
     await page.waitForTimeout(200);
