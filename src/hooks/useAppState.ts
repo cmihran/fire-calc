@@ -63,6 +63,22 @@ function migrateCore(raw: Partial<CoreConfig> & Record<string, unknown>): CoreCo
       ? raw.acaSLCSPAnnual
       : base.acaSLCSPAnnual,
     medicareEnabled: typeof raw.medicareEnabled === 'boolean' ? raw.medicareEnabled : true,
+    filingStatus: (raw.filingStatus === 'single' || raw.filingStatus === 'married_filing_jointly')
+      ? raw.filingStatus
+      : base.filingStatus,
+    twoEarner: typeof raw.twoEarner === 'boolean' ? raw.twoEarner : false,
+    spouseIncome: typeof raw.spouseIncome === 'number' && raw.spouseIncome >= 0
+      ? raw.spouseIncome
+      : 0,
+    spousePretax401kPct: typeof raw.spousePretax401kPct === 'number'
+      ? raw.spousePretax401kPct
+      : 0,
+    spouseRothIRAPct: typeof raw.spouseRothIRAPct === 'number'
+      ? raw.spouseRothIRAPct
+      : 0,
+    spouseSocialSecurity: raw.spouseSocialSecurity !== undefined
+      ? (raw.spouseSocialSecurity as CoreConfig['spouseSocialSecurity'])
+      : null,
   };
 }
 

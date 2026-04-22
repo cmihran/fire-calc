@@ -97,19 +97,36 @@ export function socialSecurityTaxable(
 }
 
 // ─── FICA ────────────────────────────────────────────────────────────────
+/**
+ * FICA for the household. SS wage cap is per-earner; Additional Medicare is
+ * on combined wages (its $200k/$250k threshold is a joint household figure).
+ *
+ * `sources` carries the primary earner's FICA-subject wages. `spouseWages`,
+ * when >0, is the spouse's FICA-subject W-2 and gets its own SS wage cap
+ * applied — so a $150k+$150k household owes more SS tax than a $300k single
+ * earner. HSA payroll reduction applies only to the primary earner (household
+ * HSA contribution comes out of primary payroll).
+ */
 export function calcFICA(
   sources: IncomeSources,
   hsaPayrollContribution: number,
   filingStatus: FilingStatus,
   yc: YearConstants,
+  spouseWages: number = 0,
 ): number {
-  // HSA via cafeteria plan reduces FICA; 401k does not.
-  const wages = Math.max(0, ficaWages(sources) - hsaPayrollContribution);
-  const ss = Math.min(wages, yc.ssWageCap) * SS_RATE;
-  const medicare = wages * MEDICARE_RATE;
+  // HSA via cafeteria plan reduces FICA for the primary earner; 401k does not.
+  const primary = Math.max(0, ficaWages(sources) - hsaPayrollContribution);
+  const spouse = Math.max(0, spouseWages);
+
+  const ssPrimary = Math.min(primary, yc.ssWageCap) * SS_RATE;
+  const ssSpouse = Math.min(spouse, yc.ssWageCap) * SS_RATE;
+
+  const combined = primary + spouse;
+  const medicare = combined * MEDICARE_RATE;
   const addlThreshold = ADDITIONAL_MEDICARE_THRESHOLD[filingStatus];
-  const addl = Math.max(0, wages - addlThreshold) * ADDITIONAL_MEDICARE_RATE;
-  return ss + medicare + addl;
+  const addl = Math.max(0, combined - addlThreshold) * ADDITIONAL_MEDICARE_RATE;
+
+  return ssPrimary + ssSpouse + medicare + addl;
 }
 
 // ─── NIIT ────────────────────────────────────────────────────────────────
@@ -253,18 +270,33 @@ export interface TaxInputs {
   age: number;
   year: number;
   assumptions: Assumptions;
+  /**
+   * Two-earner MFJ only. Spouse's FICA-subject W-2 wages, routed to calcFICA
+   * so the SS wage cap is applied per-earner. Spouse wages are expected to
+   * ALSO be folded into `sources.w2` by the caller (so federal/state ordinary
+   * bracket math sees combined wages on a single return). `spousePretax401k`
+   * reduces ordinary income for the return without touching FICA, mirroring
+   * the primary earner's 401k handling.
+   */
+  spouseFicaWages?: number;
+  spousePretax401k?: number;
 }
 
 export function calcTax(args: TaxInputs): TaxResult {
-  const { sources, pretax401k, hsaPayrollContribution, filingStatus, state, city, age, year, assumptions } = args;
+  const {
+    sources, pretax401k, hsaPayrollContribution, filingStatus, state, city, age, year, assumptions,
+    spouseFicaWages = 0, spousePretax401k = 0,
+  } = args;
   const yc = getYearConstants(year, assumptions);
 
   // Federal SS taxability
   const ssTaxableFed = socialSecurityTaxable(sources, filingStatus);
 
   // Federal ordinary base (pre-deduction); LTCG/QD/homeSaleGain sit in the
-  // preferential stack, not here.
-  const ordinaryBase = ordinaryBeforeSS(sources) + ssTaxableFed - pretax401k - hsaPayrollContribution;
+  // preferential stack, not here. Spouse's 401k deferral reduces the return's
+  // ordinary base the same way the primary's does.
+  const ordinaryBase =
+    ordinaryBeforeSS(sources) + ssTaxableFed - pretax401k - hsaPayrollContribution - spousePretax401k;
 
   // ─── State tax (computed first; needed for federal SALT deduction) ─────
   const stateInfo = STATE_TAX_DATA[state];
@@ -325,8 +357,9 @@ export function calcTax(args: TaxInputs): TaxResult {
   const investmentIncome = niitIncome(sources);
   const niit = calcNIIT(magi, investmentIncome, filingStatus);
 
-  // FICA (HSA payroll contribution reduces FICA wages)
-  const fica = calcFICA(sources, hsaPayrollContribution, filingStatus, yc);
+  // FICA (HSA payroll contribution reduces FICA wages; spouse wages applied
+  // with their own SS wage cap).
+  const fica = calcFICA(sources, hsaPayrollContribution, filingStatus, yc, spouseFicaWages);
 
   const total = federal + stateTax + localTax + fica + niit;
   const grossIncomeForRate = ordinaryBeforeSS(sources) + sources.socialSecurity + ltcgAndPreferential;

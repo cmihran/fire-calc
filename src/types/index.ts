@@ -207,6 +207,13 @@ export interface CoreConfig {
   annualIncome: number;
   monthlySpending: number;
 
+  /**
+   * Filing status for federal + state tax. Per-scenario so you can compare
+   * single vs MFJ without cloning assumptions. Defaults to the global
+   * Assumptions.filingStatus when missing (migration path).
+   */
+  filingStatus: FilingStatus;
+
   afterTax: number;               // taxable brokerage balance
   afterTaxBasis: number;          // cost basis of taxable brokerage
   traditional: number;
@@ -260,6 +267,20 @@ export interface CoreConfig {
    * user input.
    */
   medicareEnabled: boolean;
+
+  /**
+   * Two-earner household (MFJ-only). When true, the spouse fields are read by
+   * the simulator: separate W-2 payroll, SS wage cap applied per earner, own
+   * 401k pretax deferral limit, own Roth IRA slot (joint MAGI phase-out),
+   * independent SS claim/PIA. Additional Medicare and Roth IRA MAGI phase-out
+   * remain on combined-household figures. Equity comp stays on the primary
+   * earner only. Ignored when `filingStatus !== 'married_filing_jointly'`.
+   */
+  twoEarner: boolean;
+  spouseIncome: number;
+  spousePretax401kPct: number;     // 0-1 of IRS employee limit (spouse's own plan)
+  spouseRothIRAPct: number;        // 0-1 of IRS Roth IRA limit (spouse's own slot)
+  spouseSocialSecurity: SocialSecurityPlan | null;
 }
 
 export interface Assumptions {

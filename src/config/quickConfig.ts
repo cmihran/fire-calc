@@ -14,6 +14,8 @@ export const YOU: CoreConfig = {
   retirementAge: 67,
   endAge: 85,
 
+  filingStatus: 'single',
+
   annualIncome: 60_000,
   monthlySpending: 2_500,
 
@@ -45,6 +47,11 @@ export const YOU: CoreConfig = {
   householdSize: 1,
   acaSLCSPAnnual: 8_000,         // today's $ median single-person benchmark — edit per your region
   medicareEnabled: true,         // Part B + IRMAA at 65+; only skip if modeling non-enrollment
+  twoEarner: false,              // MFJ + two W-2s; toggle on in Settings to reveal spouse fields
+  spouseIncome: 0,
+  spousePretax401kPct: 0,
+  spouseRothIRAPct: 0,
+  spouseSocialSecurity: null,
 };
 
 // ============================================================================
@@ -190,6 +197,23 @@ const MOVE_TO_TX_CORE: CoreConfig = {
   ],
 };
 
+// Two-earner MFJ: same primary comp as Baseline plus a spouse earning $80k.
+// Showcases per-earner SS wage cap + dual 401k contribution ceiling.
+const TWO_EARNER_CORE: CoreConfig = {
+  ...YOU,
+  filingStatus: 'married_filing_jointly',
+  annualIncome: 85_000,
+  monthlySpending: 3_200,
+  householdSize: 2,
+  pretax401kPct: 0.5,
+  rothIRAPct: 0.75,
+  twoEarner: true,
+  spouseIncome: 80_000,
+  spousePretax401kPct: 0.5,
+  spouseRothIRAPct: 0.75,
+  spouseSocialSecurity: { claimAge: 67, estimatedPIA: 2_300 },
+};
+
 export const DEMO_APP_STATE: AppState = {
   scenarios: [
     BASELINE_SCENARIO,
@@ -207,7 +231,14 @@ export const DEMO_APP_STATE: AppState = {
       core: MOVE_TO_TX_CORE,
       sliders: DEFAULT_SLIDERS,
     },
+    {
+      id: 'two-earner',
+      name: 'Two-earner MFJ',
+      color: SCENARIO_COLORS[3],
+      core: TWO_EARNER_CORE,
+      sliders: DEFAULT_SLIDERS,
+    },
   ],
   activeScenarioId: BASELINE_SCENARIO.id,
-  compareIds: [BASELINE_SCENARIO.id, 'promotion', 'move-to-tx'],
+  compareIds: [BASELINE_SCENARIO.id, 'promotion', 'move-to-tx', 'two-earner'],
 };

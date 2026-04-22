@@ -289,6 +289,49 @@ test.describe('Healthcare (Medicare IRMAA)', () => {
   });
 });
 
+test.describe('Two-earner MFJ', () => {
+  test('spouse fields appear only after switching to MFJ', async ({ page }) => {
+    await load(page);
+    // Single by default: no "Spouse (two-earner)" group
+    const group = page.locator('.settings__group', { hasText: 'Spouse (two-earner)' });
+    await expect(group).toHaveCount(0);
+
+    // Switch filing status → MFJ
+    const filingSelect = page.locator('.field', { hasText: 'Filing' }).locator('select');
+    await filingSelect.selectOption('married_filing_jointly');
+    await expect(group).toBeVisible();
+
+    // Fields stay hidden until the checkbox is flipped
+    await expect(group.locator('.field', { hasText: 'Spouse comp' })).toHaveCount(0);
+    const toggle = group.locator('input[type="checkbox"]');
+    await toggle.check();
+    await expect(group.locator('.field', { hasText: 'Spouse comp' })).toBeVisible();
+  });
+
+  test('enabling two-earner with spouse comp changes the year-table', async ({ page }) => {
+    await load(page);
+    // Switch to MFJ so the Spouse group shows up
+    const filingSelect = page.locator('.field', { hasText: 'Filing' }).locator('select');
+    await filingSelect.selectOption('married_filing_jointly');
+
+    // Capture baseline comp at age 36 (single income, MFJ brackets)
+    const row36 = page.locator('.year-table tbody tr', { hasText: /^36\b/ }).first();
+    const baseComp = await row36.locator('td').nth(1).textContent();
+
+    // Flip two-earner on, add $100k spouse income
+    const group = page.locator('.settings__group', { hasText: 'Spouse (two-earner)' });
+    await group.locator('input[type="checkbox"]').check();
+    const spouseCompField = group.locator('.field', { hasText: 'Spouse comp' }).locator('input');
+    await spouseCompField.fill('100000');
+    await spouseCompField.press('Tab');
+    await page.waitForTimeout(150);
+
+    const dualComp = await row36.locator('td').nth(1).textContent();
+    // Tick.comp is now effectiveComp + effectiveSpouseComp — must differ
+    expect(dualComp).not.toBe(baseComp);
+  });
+});
+
 test.describe('Reset', () => {
   test('Reset restores defaults', async ({ page }) => {
     await load(page);

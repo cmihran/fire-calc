@@ -160,6 +160,11 @@ Simplification: doesn't distinguish 401k-of-last-employer from rolled-over IRA. 
 
 **72(t) SEPP → TODO.md.** Meaningfully more complex than this engine benefits from: requires one of 3 IRS methods (RMD, fixed amortization, fixed annuitization), mandatory continuation for 5 years or until 59.5 (longer), and retroactive 10% penalty on all prior withdrawals if broken. User-supplied fixed-annual-amount is a plausible V1, but the enforcement logic is where it gets gnarly. Rule of 55 covers the 55-59 case cleanly; 72(t) is only needed for <55 retirements, which is rare even for FIRE.
 
+### P2.7 — Two-earner MFJ household ✅ (done)
+`CoreConfig` gains `twoEarner: boolean` + `spouseIncome` + `spousePretax401kPct` + `spouseRothIRAPct` + `spouseSocialSecurity`. `calcFICA` takes optional `spouseWages` so the SS wage cap ($168,600 indexed) applies per-earner; Additional Medicare stays on combined wages (its $250k MFJ threshold is a joint figure). In the sim, each earner has their own $23.5k pretax 401k limit and employer match on their own salary; each spouse has their own $7k Roth IRA slot while the MAGI phase-out uses joint household MAGI; spouse SS stream stacks on primary's at their own claim age. Both spouses share `retirementAge` (simplification; no `spouseAgeDelta`). Equity comp stays primary-only. Traditional/Roth/HSA remain single household buckets — per-spouse balance split deferred. Filing status moved from `Assumptions` to `CoreConfig` so users can compare Single vs MFJ scenarios directly. UI: Settings has a Filing selector + a Spouse (two-earner) group that reveals spouse fields when `filingStatus === 'married_filing_jointly' && twoEarner`.
+
+Not yet: spousal/survivor SS benefits (still in TODO), per-spouse age delta, spouse equity comp, per-spouse account balances.
+
 ### P2.6 — Medicare IRMAA ✅ (done)
 `computeIRMAA({ magi, filingStatus, enrollees, year, assumptions })` in `healthcare.ts` returns base Part B monthly + tiered Part B / Part D surcharges using the 6-tier 2025 schedule (single + MFJ; top MFJ tier caps at $750k, not $1M). Simulate maintains a `magiHistory[age]` buffer of post-drawdown MAGI so that age 65+ IRMAA reads age-2's MAGI (the statutory 2-year lookback). Enrollees derived from filing status (1 single, 2 MFJ). `CoreConfig.medicareEnabled` defaults true; IRMAA cost rolls into `cashOut` (invisible to `taxes` — it's a premium, not a tax).
 
@@ -176,7 +181,7 @@ Everything not above lives in `TODO.md`, organized by category. Quick summary:
 - NUA, estate/gift/GSTT + state estate tax
 - §1031, rental income + depreciation, FTC/FEIE
 - Saver's Credit, EV/solar credits, state 529 deductions
-- Two-earner household, state reciprocity, underpayment penalty
+- State reciprocity, underpayment penalty
 - Full per-state local coverage (PA EIT, OH RITA/CCA, MD county, MI Detroit, MO KC/STL, AL Birmingham, KY Louisville/Lexington)
 - Stochastic returns (unlocks loss harvesting)
 

@@ -132,7 +132,9 @@ export const App: React.FC = () => {
           <div className="sidebar__assumptions">
             Federal + {activeScenario.core.stateOfResidence}
             {activeScenario.core.cityOfResidence ? ` (${activeScenario.core.cityOfResidence})` : ''} tax brackets + FICA + NIIT.
-            {' '}{ASSUMPTIONS.filingStatus === 'single' ? 'Single' : 'MFJ'} filer.
+            {' '}{activeScenario.core.filingStatus === 'single' ? 'Single' : 'MFJ'} filer
+            {activeScenario.core.filingStatus === 'married_filing_jointly' && activeScenario.core.twoEarner
+              ? ' (2-earner)' : ''}.
             {' '}{(ASSUMPTIONS.employer401kMatchPct * 100).toFixed(0)}% employer match.
             {' '}Brackets/limits grow {(ASSUMPTIONS.bracketIndexing * 100).toFixed(1)}%/yr.
             {' '}Div/gain yield {((ASSUMPTIONS.qualifiedDividendYield + ASSUMPTIONS.ordinaryDividendYield + ASSUMPTIONS.realizedGainYield) * 100).toFixed(1)}%.

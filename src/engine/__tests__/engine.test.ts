@@ -36,6 +36,7 @@ const BASE_ASSUMPTIONS: Assumptions = {
 
 const BASE_CORE: CoreConfig = {
   age: 35, retirementAge: 65, endAge: 90,
+  filingStatus: 'single',
   annualIncome: 200_000,
   monthlySpending: 5_000,
   afterTax: 100_000,
@@ -61,6 +62,11 @@ const BASE_CORE: CoreConfig = {
   householdSize: 1,
   acaSLCSPAnnual: 8_000,
   medicareEnabled: false,  // off by default in tests; opt in per-case
+  twoEarner: false,
+  spouseIncome: 0,
+  spousePretax401kPct: 0,
+  spouseRothIRAPct: 0,
+  spouseSocialSecurity: null,
 };
 
 const BASE_SLIDERS: SliderOverrides = {
@@ -137,6 +143,29 @@ describe('calcFICA', () => {
     const expected = 50_000 * 0.0145 + Math.min(50_000, 50_000) * 0.009;
     // SS already capped by 200k so the diff is medicare + additional medicare
     expect(diff).toBeCloseTo(expected, 0);
+  });
+  it('two-earner: SS wage cap applies per-earner, not per-household', () => {
+    // 300k at single earner (SS cap cuts SS at 168,600) vs 150k+150k (both
+    // under cap → SS paid on the full 300k). FICA owed by the couple is higher.
+    const oneEarner: IncomeSources = { ...ZERO_INCOME, w2: 300_000 };
+    const twoEarnerW2: IncomeSources = { ...ZERO_INCOME, w2: 150_000 };
+    const one = calcFICA(oneEarner, 0, 'married_filing_jointly', yc);
+    const two = calcFICA(twoEarnerW2, 0, 'married_filing_jointly', yc, 150_000);
+    expect(two).toBeGreaterThan(one);
+    // Difference should be the uncapped SS tax that the single earner avoided
+    // on income from (cap → 300k): (300k - 168,600) × 6.2%.
+    const expectedDelta = (300_000 - yc.ssWageCap) * 0.062;
+    expect(two - one).toBeCloseTo(expectedDelta, -1);
+  });
+  it('two-earner: Additional Medicare applied on combined wages', () => {
+    // Both spouses at 150k → combined 300k. MFJ threshold is 250k → 50k over,
+    // 0.9% on 50k = $450 Additional Medicare.
+    const primary: IncomeSources = { ...ZERO_INCOME, w2: 150_000 };
+    const total = calcFICA(primary, 0, 'married_filing_jointly', yc, 150_000);
+    // SS per-earner (both uncapped): 2 × 150k × 6.2% = 18,600
+    // Medicare on combined: 300k × 1.45% = 4,350
+    // Additional Medicare: (300k - 250k) × 0.9% = 450
+    expect(total).toBeCloseTo(2 * 150_000 * 0.062 + 300_000 * 0.0145 + 50_000 * 0.009, 0);
   });
 });
 
@@ -1232,5 +1261,107 @@ describe('simulate with Medicare IRMAA', () => {
     const delta65to66 = at66.netWorth - at65.netWorth;
     const delta66to67 = at67.netWorth - at66.netWorth;
     expect(delta66to67).toBeGreaterThan(delta65to66);
+  });
+});
+
+// ─── Two-earner MFJ household ────────────────────────────────────────────
+describe('simulate with two-earner household', () => {
+  const MFJ_ASSUMPTIONS: Assumptions = { ...BASE_ASSUMPTIONS, filingStatus: 'married_filing_jointly' };
+
+  it('two earners at 150k+150k grow Traditional faster than one 300k earner (dual 401k)', () => {
+    // Same combined comp, same everything else; only difference is routing.
+    const mfjCore: CoreConfig = {
+      ...BASE_CORE,
+      filingStatus: 'married_filing_jointly',
+      age: 35, retirementAge: 65, endAge: 70,
+      annualIncome: 300_000, monthlySpending: 5_000,
+      pretax401kPct: 1, rothIRAPct: 1, hsaContribPct: 0, megaBackdoorPct: 0,
+      traditional: 0, roth: 0, afterTax: 0, afterTaxBasis: 0,
+      socialSecurity: null,
+    };
+    const single = simulate(mfjCore, MFJ_ASSUMPTIONS, BASE_SLIDERS);
+    const dual = simulate({
+      ...mfjCore,
+      annualIncome: 150_000,
+      twoEarner: true,
+      spouseIncome: 150_000,
+      spousePretax401kPct: 1,
+      spouseRothIRAPct: 1,
+    }, MFJ_ASSUMPTIONS, BASE_SLIDERS);
+
+    const single40 = single.find((t) => t.age === 40)!;
+    const dual40 = dual.find((t) => t.age === 40)!;
+
+    // Dual-earner defers 2× the 401k limit (plus 2× employer match) → more
+    // money landing in Traditional each year. FICA cost is higher too (no SS
+    // wage cap savings), but the tax-advantaged balance grows strictly more.
+    expect(dual40.traditional).toBeGreaterThan(single40.traditional);
+  });
+
+  it('second spouse SS claim adds to household SS benefit at their claim age', () => {
+    const base: CoreConfig = {
+      ...BASE_CORE,
+      filingStatus: 'married_filing_jointly',
+      age: 60, retirementAge: 62, endAge: 75,
+      annualIncome: 0, monthlySpending: 4_000,
+      traditional: 500_000, afterTax: 500_000, afterTaxBasis: 500_000,
+      socialSecurity: { claimAge: 67, estimatedPIA: 3_000 },
+    };
+    const onePIA = simulate(base, MFJ_ASSUMPTIONS, BASE_SLIDERS);
+    const twoPIA = simulate({
+      ...base,
+      twoEarner: true,
+      spouseIncome: 0,
+      spouseSocialSecurity: { claimAge: 67, estimatedPIA: 2_200 },
+    }, MFJ_ASSUMPTIONS, BASE_SLIDERS);
+
+    const at66One = onePIA.find((t) => t.age === 66)!;
+    const at66Two = twoPIA.find((t) => t.age === 66)!;
+    const at67One = onePIA.find((t) => t.age === 67)!;
+    const at67Two = twoPIA.find((t) => t.age === 67)!;
+
+    // Before claim age, SS is null for both
+    expect(at66One.socialSecurity).toBeNull();
+    expect(at66Two.socialSecurity).toBeNull();
+    // At 67 the second spouse's benefit stacks on top — household SS is larger
+    expect(at67Two.socialSecurity!).toBeGreaterThan(at67One.socialSecurity!);
+  });
+
+  it('twoEarner is no-op when filingStatus is single', () => {
+    // Single filer who has spouse fields set shouldn't see them take effect.
+    const withSpouse: CoreConfig = {
+      ...BASE_CORE, twoEarner: true, spouseIncome: 100_000, spousePretax401kPct: 1,
+    };
+    const withoutSpouse: CoreConfig = { ...BASE_CORE };
+    const a = simulate(withSpouse, BASE_ASSUMPTIONS, BASE_SLIDERS);  // single
+    const b = simulate(withoutSpouse, BASE_ASSUMPTIONS, BASE_SLIDERS);
+    const a45 = a.find((t) => t.age === 45)!;
+    const b45 = b.find((t) => t.age === 45)!;
+    expect(a45.netWorth).toBe(b45.netWorth);
+  });
+
+  it('spouse pretax 401k increases Traditional balance vs spouse not deferring', () => {
+    // Hold primary flat; vary spouse's 401k pct. Higher pct = more money
+    // landing in Traditional each year.
+    const base: CoreConfig = {
+      ...BASE_CORE,
+      filingStatus: 'married_filing_jointly',
+      age: 35, retirementAge: 65, endAge: 50,
+      annualIncome: 100_000, monthlySpending: 5_000,
+      traditional: 0, roth: 0, afterTax: 0, afterTaxBasis: 0,
+      pretax401kPct: 0, rothIRAPct: 0, hsaContribPct: 0,
+      socialSecurity: null,
+      twoEarner: true,
+      spouseIncome: 100_000,
+    };
+    const noSpouseDefer = simulate({ ...base, spousePretax401kPct: 0 }, MFJ_ASSUMPTIONS, BASE_SLIDERS);
+    const spouseMaxDefer = simulate({ ...base, spousePretax401kPct: 1 }, MFJ_ASSUMPTIONS, BASE_SLIDERS);
+
+    const no40 = noSpouseDefer.find((t) => t.age === 40)!;
+    const max40 = spouseMaxDefer.find((t) => t.age === 40)!;
+    expect(max40.traditional).toBeGreaterThan(no40.traditional);
+    // Taxes should be lower when spouse is deferring (spousePretax401k reduces
+    // federal ordinary base; FICA identical since spouse comp unchanged).
+    expect(max40.taxes!).toBeLessThan(no40.taxes!);
   });
 });

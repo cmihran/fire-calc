@@ -3,6 +3,7 @@ import type {
   CoreConfig, Assumptions, StateCode, RothConversionPlan,
   HomeHolding, HomeEvent,
   EquityCompPlan, EquityVestWindow, EquityExerciseEvent,
+  SocialSecurityPlan,
 } from '../types';
 import { ALL_STATE_CODES, STATE_NAMES, STATE_TAX_DATA } from '../engine/stateTaxData';
 
@@ -554,7 +555,75 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
             </select>
           </label>
         )}
+        <label className="field">
+          <span className="field__label">Filing</span>
+          <select
+            className="field__select"
+            value={core.filingStatus}
+            onChange={(e) => set('filingStatus', e.target.value as CoreConfig['filingStatus'])}
+          >
+            <option value="single">Single</option>
+            <option value="married_filing_jointly">Married filing jointly</option>
+          </select>
+        </label>
       </div>
+
+      {core.filingStatus === 'married_filing_jointly' && (
+        <div className="settings__group">
+          <div className="settings__group-label">Spouse (two-earner)</div>
+          <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.4rem' }}>
+            <input
+              type="checkbox"
+              checked={core.twoEarner}
+              onChange={(e) => set('twoEarner', e.target.checked)}
+            />
+            <span className="field__label" style={{ margin: 0 }}>
+              Two-earner household
+            </span>
+          </label>
+          {core.twoEarner && (
+            <>
+              <Field label="Spouse comp" value={core.spouseIncome} step={1000} min={0} prefix="$"
+                onChange={(v) => set('spouseIncome', v)} />
+              <ContribSlider
+                label="Spouse pre-tax 401k"
+                pct={core.spousePretax401kPct}
+                limit={23_500}
+                onChange={(v) => set('spousePretax401kPct', v)}
+              />
+              <ContribSlider
+                label="Spouse Roth IRA"
+                pct={core.spouseRothIRAPct}
+                limit={7_000}
+                onChange={(v) => set('spouseRothIRAPct', v)}
+              />
+              {core.spouseSocialSecurity ? (
+                <>
+                  <div className="settings__grid settings__grid--2col">
+                    <Field label="Spouse claim age" value={core.spouseSocialSecurity.claimAge}
+                      step={1} min={62} max={70}
+                      onChange={(v) => set('spouseSocialSecurity',
+                        { ...(core.spouseSocialSecurity as SocialSecurityPlan), claimAge: v })} />
+                    <Field label="Spouse PIA / mo" value={core.spouseSocialSecurity.estimatedPIA}
+                      step={50} min={0} prefix="$"
+                      onChange={(v) => set('spouseSocialSecurity',
+                        { ...(core.spouseSocialSecurity as SocialSecurityPlan), estimatedPIA: v })} />
+                  </div>
+                  <button type="button" className="roth-conversions__remove settings__inline-btn"
+                    onClick={() => set('spouseSocialSecurity', null)}>
+                    Disable spouse SS
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="roth-conversions__add"
+                  onClick={() => set('spouseSocialSecurity', { claimAge: 67, estimatedPIA: 2_200 })}>
+                  + Enable spouse Social Security
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="settings__group">
         <div className="settings__group-label">Balances</div>
@@ -588,7 +657,7 @@ export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
           pct={core.rothIRAPct}
           eligible={rothIRAEligibleDollars(
             core.annualIncome, core.pretax401kPct, core.hsaContribPct,
-            core.rothIRAPct, assumptions.filingStatus,
+            core.rothIRAPct, core.filingStatus,
           )}
           onChange={(v) => set('rothIRAPct', v)}
         />

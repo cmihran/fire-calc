@@ -78,6 +78,10 @@ export function simulate(
   const startAge = core.age;
   const endAge = core.endAge;
   const baseYear = new Date().getFullYear();
+  // Filing status lives on core (per-scenario). Fall back to the (legacy)
+  // global Assumptions value if a hand-built CoreConfig in tests/migration
+  // forgets to set it.
+  const filingStatus = core.filingStatus ?? assumptions.filingStatus;
 
   // Running balances
   let traditional = core.traditional;
@@ -101,6 +105,10 @@ export function simulate(
 
   // Running flows
   let comp = core.annualIncome;
+  // Spouse comp grows independently at the same income-growth rate. Only
+  // relevant when twoEarner is on AND filingStatus is MFJ.
+  const twoEarner = core.twoEarner && filingStatus === 'married_filing_jointly';
+  let spouseComp = twoEarner ? core.spouseIncome : 0;
   let annualSpending = core.monthlySpending * 12;
 
   // Rolling MAGI buffer for IRMAA's 2-year lookback. Keyed by age so that
@@ -147,6 +155,9 @@ export function simulate(
     }
 
     const effectiveComp = retired ? 0 : comp;
+    // Both spouses retire together (single retirementAge). Spouse income stops
+    // when primary retires — deliberate simplification per project scope.
+    const effectiveSpouseComp = retired || !twoEarner ? 0 : spouseComp;
 
     // ─── Home events for this age (sells first, then buys) ───────────
     // Sells free cash + may trigger §121-excluded LTCG; buys consume
@@ -161,7 +172,7 @@ export function simulate(
       if (ev.kind !== 'sell') continue;
       if (!currentHome) continue;
       const outcome = computeSaleOutcome(
-        currentHome, currentHome.currentValue, { age }, ev.sellingCostPct, assumptions.filingStatus,
+        currentHome, currentHome.currentValue, { age }, ev.sellingCostPct, filingStatus,
       );
       sellCashProceeds += outcome.cashToOwner;
       homeSaleGain += outcome.taxableGain;
@@ -213,8 +224,16 @@ export function simulate(
     // ─── Contributions (pre-tax and post-tax) ─────────────────────────
     // 401k/HSA/mega-backdoor eligibility is tied to salary deferrals only —
     // RSU and NSO have their own withholding stream and don't qualify.
+    // Each earner has their own $23.5k pretax 401k limit and employer match
+    // on their own salary. HSA family limit is joint (household-level).
     const pretax401k = retired ? 0 : Math.min(effectiveComp, core.pretax401kPct * yc.limitPretax401k);
+    const spousePretax401k = retired || !twoEarner
+      ? 0
+      : Math.min(effectiveSpouseComp, core.spousePretax401kPct * yc.limitPretax401k);
     const employerMatch = retired ? 0 : effectiveComp * assumptions.employer401kMatchPct;
+    const spouseEmployerMatch = retired || !twoEarner
+      ? 0
+      : effectiveSpouseComp * assumptions.employer401kMatchPct;
     const hsaContrib = retired ? 0 : Math.min(
       Math.max(0, effectiveComp - pretax401k),
       core.hsaContribPct * hsaLimit(age, yc),
@@ -224,15 +243,23 @@ export function simulate(
       core.megaBackdoorPct * yc.limitMegaBackdoor,
     );
 
-    // Roth IRA MAGI includes RSU/NSO/ESPP ordinary; phase-out must see it.
+    // Roth IRA MAGI is household-level and includes RSU/NSO/ESPP ordinary
+    // (primary earner only — spouse has no equity comp in the model). Each
+    // spouse gets their own $7k slot but the phase-out applies to joint MAGI.
     const magi = Math.max(0,
-      effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
-      - pretax401k - hsaContrib,
+      effectiveComp + effectiveSpouseComp + equity.rsu + equity.nsoSpread + equity.espp
+      - pretax401k - spousePretax401k - hsaContrib,
     );
     const desiredRothIRA = core.rothIRAPct * (age >= 50 ? yc.limitRothIRACatchup : yc.limitRothIRA);
     const rothIRAContrib = retired
       ? 0
-      : rothIRAAllowedContribution(magi, desiredRothIRA, assumptions.filingStatus, yc);
+      : rothIRAAllowedContribution(magi, desiredRothIRA, filingStatus, yc);
+    const desiredSpouseRothIRA = twoEarner
+      ? core.spouseRothIRAPct * (age >= 50 ? yc.limitRothIRACatchup : yc.limitRothIRA)
+      : 0;
+    const spouseRothIRAContrib = retired || !twoEarner
+      ? 0
+      : rothIRAAllowedContribution(magi, desiredSpouseRothIRA, filingStatus, yc);
 
     // ─── Portfolio-generated income (from taxable account only) ────────
     const qdYield = taxableBalance * assumptions.qualifiedDividendYield;
@@ -240,12 +267,23 @@ export function simulate(
     const realizedGainYield = taxableBalance * assumptions.realizedGainYield;
 
     // ─── Social Security benefit ──────────────────────────────────────
+    // Each spouse has their own PIA + claim age. Spousal/survivor benefit
+    // optimization isn't modeled (deferred in TODO) — just two independent
+    // streams. Both spouses share the primary's age timeline (no spouseAgeDelta),
+    // so "claim age reached" uses the primary's age for both.
     let ssBenefit = 0;
+    const inflationFactor = Math.pow(1 + assumptions.inflation, age - startAge);
     if (ssStarted && core.socialSecurity) {
       const adj = ssClaimAdjustment(core.socialSecurity.claimAge);
-      const inflationFactor = Math.pow(1 + assumptions.inflation, age - startAge);
-      ssBenefit = core.socialSecurity.estimatedPIA * 12 * adj * inflationFactor;
+      ssBenefit += core.socialSecurity.estimatedPIA * 12 * adj * inflationFactor;
     }
+    if (twoEarner && core.spouseSocialSecurity && age >= core.spouseSocialSecurity.claimAge) {
+      const adj = ssClaimAdjustment(core.spouseSocialSecurity.claimAge);
+      ssBenefit += core.spouseSocialSecurity.estimatedPIA * 12 * adj * inflationFactor;
+    }
+    const spouseSSStarted = twoEarner
+      && !!core.spouseSocialSecurity
+      && age >= core.spouseSocialSecurity.claimAge;
 
     // ─── RMD and Roth conversion (apply to balances before tax calc) ──
     const rmd = computeRMD(age, year, traditional);
@@ -264,9 +302,12 @@ export function simulate(
     roth += rothConversion;
 
     // ─── Build IncomeSources for tax calc ─────────────────────────────
+    // Combined W-2 goes into sources.w2 so federal/state ordinary bracket
+    // math sees household wages on a single return. calcFICA receives
+    // spouseFicaWages separately so the SS wage cap is applied per-earner.
     let sources: IncomeSources = {
       ...ZERO_INCOME,
-      w2: effectiveComp,
+      w2: effectiveComp + effectiveSpouseComp,
       rsu: equity.rsu,
       nsoSpread: equity.nsoSpread,
       espp: equity.espp,
@@ -285,13 +326,18 @@ export function simulate(
     // ─── Compute baseline tax ─────────────────────────────────────────
     const baselineTax = calcTax({
       sources, pretax401k, hsaPayrollContribution: hsaContrib,
-      filingStatus: assumptions.filingStatus, state: core.stateOfResidence,
+      spouseFicaWages: effectiveSpouseComp,
+      spousePretax401k,
+      filingStatus: filingStatus, state: core.stateOfResidence,
       city: core.cityOfResidence, age, year, assumptions,
     });
 
     // ─── Apply contributions to balances ──────────────────────────────
-    traditional += pretax401k + employerMatch;
-    roth += megaBackdoor + rothIRAContrib;
+    // Simplification: Traditional/Roth/HSA are single household buckets
+    // (not split per-spouse). Per-spouse contribution limits were enforced
+    // individually above; what lands in the bucket is the combined flow.
+    traditional += pretax401k + spousePretax401k + employerMatch + spouseEmployerMatch;
+    roth += megaBackdoor + rothIRAContrib + spouseRothIRAContrib;
     hsa += hsaContrib;
 
     // Realized distributions reinvested into taxable — basis grows, balance
@@ -303,10 +349,10 @@ export function simulate(
     // withdrawal to cover spending would bump MAGI and reduce PTC / push into
     // a higher IRMAA bracket, but we don't iterate.
     const preDrawdownMagi = Math.max(0,
-      effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
+      effectiveComp + effectiveSpouseComp + equity.rsu + equity.nsoSpread + equity.espp
       + ordDivYield + qdYield + realizedGainYield
       + ssBenefit + rmd + rothConversion + homeSaleGain
-      - pretax401k - hsaContrib,
+      - pretax401k - spousePretax401k - hsaContrib,
     );
 
     let acaNetPremium = 0;
@@ -325,9 +371,9 @@ export function simulate(
     let irmaaAnnual = 0;
     if (core.medicareEnabled && age >= 65) {
       const lookbackMagi = magiHistory[age - 2] ?? preDrawdownMagi;
-      const enrollees = assumptions.filingStatus === 'married_filing_jointly' ? 2 : 1;
+      const enrollees = filingStatus === 'married_filing_jointly' ? 2 : 1;
       const irmaa = computeIRMAA({
-        magi: lookbackMagi, filingStatus: assumptions.filingStatus,
+        magi: lookbackMagi, filingStatus: filingStatus,
         enrollees, year, assumptions,
       });
       irmaaAnnual = irmaa.annualTotal;
@@ -336,9 +382,10 @@ export function simulate(
     // ─── Cash flow ────────────────────────────────────────────────────
     // equity.cashIn covers RSU sold at vest + NSO/ESPP cashless exercise.
     // ISO bargain is stashed on IncomeSources for AMT but produces no cash.
-    const cashIn = effectiveComp + equity.cashIn + ssBenefit + rmd + sellCashProceeds;
+    const cashIn = effectiveComp + effectiveSpouseComp + equity.cashIn + ssBenefit + rmd + sellCashProceeds;
     const cashOut =
-      pretax401k + hsaContrib + megaBackdoor + rothIRAContrib
+      pretax401k + spousePretax401k + hsaContrib + megaBackdoor
+      + rothIRAContrib + spouseRothIRAContrib
       + baselineTax.total + annualSpending + annualHomeCashOut
       + acaNetPremium + irmaaAnnual;
     const discretionary = cashIn - cashOut;
@@ -361,7 +408,7 @@ export function simulate(
         needNet,
         { traditional, roth, hsa, taxableBalance, taxableBasis },
         {
-          age, year, filingStatus: assumptions.filingStatus,
+          age, year, filingStatus: filingStatus,
           state: core.stateOfResidence, city: core.cityOfResidence,
           assumptions, baseSources: sources,
           penaltyExempt: rule55Exempt,
@@ -392,21 +439,22 @@ export function simulate(
 
     // ─── Record tick ──────────────────────────────────────────────────
     const totalSaved =
-      pretax401k + employerMatch + megaBackdoor + rothIRAContrib + hsaContrib
+      pretax401k + spousePretax401k + employerMatch + spouseEmployerMatch
+      + megaBackdoor + rothIRAContrib + spouseRothIRAContrib + hsaContrib
       + Math.max(0, discretionary);
     const totalTax = baselineTax.total + withdrawalTax + withdrawalPenalty;
     const grossForRate =
-      effectiveComp + equity.rsu + equity.nsoSpread + equity.espp
+      effectiveComp + effectiveSpouseComp + equity.rsu + equity.nsoSpread + equity.espp
       + ssBenefit + rmd + qdYield + ordDivYield + realizedGainYield;
     ticks.push({
       ...startTick,
-      comp: Math.round(effectiveComp),
+      comp: Math.round(effectiveComp + effectiveSpouseComp),
       spending: Math.round(annualSpending),
       taxes: Math.round(baselineTax.total),
       taxRate: grossForRate > 0 ? Math.round((totalTax / grossForRate) * 100) : null,
       withdrawalTax: Math.round(withdrawalTax + withdrawalPenalty),
       savings: Math.round(totalSaved),
-      socialSecurity: ssStarted ? Math.round(ssBenefit) : null,
+      socialSecurity: (ssStarted || spouseSSStarted) ? Math.round(ssBenefit) : null,
       rmd: rmd > 0 ? Math.round(rmd) : null,
       rothConversion: rothConversion > 0 ? Math.round(rothConversion) : null,
       mortgagePayment: mortgagePaidThisYear > 0 ? Math.round(mortgagePaidThisYear) : null,
@@ -438,6 +486,7 @@ export function simulate(
 
     // ─── Grow inputs for next year ────────────────────────────────────
     comp *= 1 + assumptions.incomeGrowthRate;
+    spouseComp *= 1 + assumptions.incomeGrowthRate;
     annualSpending *= 1 + spendingGrowth;
   }
 
