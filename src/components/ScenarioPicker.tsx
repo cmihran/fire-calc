@@ -6,6 +6,7 @@ interface Props {
   scenarios: Scenario[];
   activeId: string;
   compareIds: string[];
+  readOnly?: boolean;
   onActivate: (id: string) => void;
   onToggleCompare: (id: string) => void;
   onAdd: (name?: string) => void;
@@ -19,6 +20,7 @@ export const ScenarioPicker: React.FC<Props> = ({
   scenarios,
   activeId,
   compareIds,
+  readOnly = false,
   onActivate,
   onToggleCompare,
   onAdd,
@@ -47,9 +49,11 @@ export const ScenarioPicker: React.FC<Props> = ({
                 className="scenario-row__swatch"
                 style={{ background: s.color }}
                 aria-label={`Change color for ${s.name}`}
-                title="Change color"
+                title={readOnly ? 'Read-only' : 'Change color'}
+                disabled={readOnly}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (readOnly) return;
                   setColorPickerId(colorPickerId === s.id ? null : s.id);
                 }}
               />
@@ -65,7 +69,7 @@ export const ScenarioPicker: React.FC<Props> = ({
                   onChange={() => onToggleCompare(s.id)}
                 />
               </label>
-              {renamingId === s.id ? (
+              {renamingId === s.id && !readOnly ? (
                 <RenameInput
                   initial={s.name}
                   onCommit={(name) => {
@@ -79,8 +83,8 @@ export const ScenarioPicker: React.FC<Props> = ({
                   type="button"
                   className="scenario-row__name"
                   onClick={() => onActivate(s.id)}
-                  onDoubleClick={() => setRenamingId(s.id)}
-                  title="Click to activate, double-click to rename"
+                  onDoubleClick={() => { if (!readOnly) setRenamingId(s.id); }}
+                  title={readOnly ? 'Click to view' : 'Click to activate, double-click to rename'}
                 >
                   {s.name}
                 </button>
@@ -89,8 +93,9 @@ export const ScenarioPicker: React.FC<Props> = ({
                 <button
                   type="button"
                   className="scenario-row__icon-btn"
-                  title="Rename"
+                  title={readOnly ? 'Read-only' : 'Rename'}
                   aria-label={`Rename ${s.name}`}
+                  disabled={readOnly}
                   onClick={() => setRenamingId(s.id)}
                 >
                   ✎
@@ -98,9 +103,9 @@ export const ScenarioPicker: React.FC<Props> = ({
                 <button
                   type="button"
                   className="scenario-row__icon-btn scenario-row__icon-btn--danger"
-                  title={scenarios.length <= 1 ? 'Cannot delete last scenario' : 'Delete'}
+                  title={readOnly ? 'Read-only' : (scenarios.length <= 1 ? 'Cannot delete last scenario' : 'Delete')}
                   aria-label={`Delete ${s.name}`}
-                  disabled={scenarios.length <= 1}
+                  disabled={readOnly || scenarios.length <= 1}
                   onClick={() => {
                     if (window.confirm(`Delete scenario "${s.name}"?`)) onDelete(s.id);
                   }}
@@ -130,10 +135,22 @@ export const ScenarioPicker: React.FC<Props> = ({
         })}
       </ul>
       <div className="scenarios__footer">
-        <button type="button" className="scenarios__btn" onClick={() => onAdd()}>
+        <button
+          type="button"
+          className="scenarios__btn"
+          onClick={() => onAdd()}
+          disabled={readOnly}
+          title={readOnly ? 'Read-only profile' : undefined}
+        >
           + New
         </button>
-        <button type="button" className="scenarios__btn" onClick={onDuplicate}>
+        <button
+          type="button"
+          className="scenarios__btn"
+          onClick={onDuplicate}
+          disabled={readOnly}
+          title={readOnly ? 'Read-only profile' : undefined}
+        >
           Duplicate
         </button>
       </div>

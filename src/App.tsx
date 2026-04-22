@@ -8,6 +8,7 @@ import { Chart } from './components/Chart';
 import { MilestoneCards } from './components/MilestoneCards';
 import { YearTable } from './components/YearTable';
 import { ScenarioPicker } from './components/ScenarioPicker';
+import { ProfilePicker } from './components/ProfilePicker';
 import { fmt, deflateTicks } from './utils/format';
 import type { Scenario, Tick } from './types';
 import './styles/app.css';
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
   const {
     state,
     activeScenario,
+    isReadOnly,
     setActiveScenarioId,
     setActiveCore,
     setActiveSliders,
@@ -35,6 +37,13 @@ export const App: React.FC = () => {
     setScenarioColor,
     toggleCompare,
     resetToDefaults,
+    profiles,
+    activeProfileId,
+    setActiveProfile,
+    createProfile,
+    duplicateActiveProfile,
+    deleteProfile,
+    renameProfile,
   } = useAppState();
   const [displayMode, setDisplayMode] = useState<DisplayMode>('nominal');
 
@@ -98,6 +107,15 @@ export const App: React.FC = () => {
         <aside className="sidebar">
           <div className="sidebar__header">
             <h1 className="sidebar__title">Net Worth Projection</h1>
+            <ProfilePicker
+              profiles={profiles}
+              activeProfileId={activeProfileId}
+              onActivate={setActiveProfile}
+              onCreate={createProfile}
+              onDuplicate={duplicateActiveProfile}
+              onRename={renameProfile}
+              onDelete={deleteProfile}
+            />
             <div className="sidebar__actions">
               <button
                 type="button"
@@ -106,16 +124,38 @@ export const App: React.FC = () => {
               >
                 {displayMode === 'nominal' ? "Today's $" : 'Nominal $'}
               </button>
-              <button type="button" className="toggle-btn toggle-btn--muted" onClick={resetToDefaults}>
+              <button
+                type="button"
+                className="toggle-btn toggle-btn--muted"
+                onClick={resetToDefaults}
+                disabled={isReadOnly}
+                title={isReadOnly ? 'Read-only profile' : 'Reset this profile to defaults'}
+              >
                 Reset
               </button>
             </div>
           </div>
 
+          {isReadOnly && (
+            <div className="readonly-banner">
+              <span className="readonly-banner__text">
+                Demo profile is read-only. Duplicate it to make edits.
+              </span>
+              <button
+                type="button"
+                className="readonly-banner__btn"
+                onClick={() => duplicateActiveProfile('My Profile')}
+              >
+                Duplicate to edit
+              </button>
+            </div>
+          )}
+
           <ScenarioPicker
             scenarios={state.scenarios}
             activeId={state.activeScenarioId}
             compareIds={state.compareIds}
+            readOnly={isReadOnly}
             onActivate={setActiveScenarioId}
             onToggleCompare={toggleCompare}
             onAdd={addScenario}
@@ -125,9 +165,11 @@ export const App: React.FC = () => {
             onColorChange={setScenarioColor}
           />
 
-          <Settings core={activeScenario.core} onChange={setActiveCore} />
+          <div className={isReadOnly ? 'is-readonly-block' : undefined}>
+            <Settings core={activeScenario.core} onChange={setActiveCore} />
 
-          <Controls sliders={activeScenario.sliders} onChange={setActiveSliders} />
+            <Controls sliders={activeScenario.sliders} onChange={setActiveSliders} />
+          </div>
 
           <div className="sidebar__assumptions">
             Federal + {activeScenario.core.stateOfResidence}

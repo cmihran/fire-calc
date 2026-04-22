@@ -407,3 +407,55 @@ test.describe('Scenarios', () => {
     await expect(page.locator('.scenario-row__icon-btn--danger').first()).toBeEnabled();
   });
 });
+
+test.describe('Profiles', () => {
+  test('default profile is editable; Demo profile is in the dropdown as read-only', async ({ page }) => {
+    await load(page);
+    await page.locator('.profile-picker__trigger').click();
+    // My Profile + Demo (read-only)
+    const rows = page.locator('.profile-picker__row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(1)).toContainText(/Demo/);
+    await expect(rows.nth(1)).toContainText(/read-only/);
+  });
+
+  test('switching to Demo profile shows banner and disables Settings editing', async ({ page }) => {
+    await load(page);
+    await page.locator('.profile-picker__trigger').click();
+    await page.locator('.profile-picker__row-name', { hasText: /Demo/ }).click();
+    await expect(page.locator('.readonly-banner')).toBeVisible();
+    // Reset button is disabled
+    await expect(page.locator('button', { hasText: 'Reset' })).toBeDisabled();
+    // Gross comp input should be within .is-readonly-block wrapper
+    await expect(page.locator('.is-readonly-block .field', { hasText: 'Gross comp' })).toBeVisible();
+  });
+
+  test('Duplicate to edit creates a new editable profile from Demo', async ({ page }) => {
+    await load(page);
+    await page.locator('.profile-picker__trigger').click();
+    await page.locator('.profile-picker__row-name', { hasText: /Demo/ }).click();
+    await expect(page.locator('.readonly-banner')).toBeVisible();
+
+    await page.locator('.readonly-banner__btn').click();
+    await expect(page.locator('.readonly-banner')).toHaveCount(0);
+    // Demo has 4 scenarios — duplicate carried them over
+    await expect(page.locator('.scenario-row')).toHaveCount(4);
+    // New profile name is "My Profile" per duplicateActiveProfile arg
+    await expect(page.locator('.profile-picker__trigger-name')).toHaveText('My Profile');
+  });
+
+  test('creating a new profile starts from a single clean Baseline', async ({ page }) => {
+    await load(page);
+    // Edit comp in the default profile
+    const comp = page.locator('.field', { hasText: 'Gross comp' }).locator('input');
+    await comp.fill('250000');
+    await comp.press('Tab');
+
+    await page.locator('.profile-picker__trigger').click();
+    await page.locator('.profile-picker__btn', { hasText: '+ New profile' }).click();
+
+    // New profile: one Baseline scenario, comp = default 60000
+    await expect(page.locator('.scenario-row')).toHaveCount(1);
+    await expect(comp).toHaveValue('60000');
+  });
+});
