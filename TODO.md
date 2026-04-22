@@ -3,7 +3,6 @@
 Forward-looking list of everything not yet modeled. Items are either too complex, too rare to matter for a personal FIRE projection, or dependent on scaffolding we don't have yet. Current coverage lives in `CLAUDE.md`'s "Tax engine coverage" section; commit history is the record of what got shipped.
 
 ## UI
-- drag to move retirement slider is not very smooth, jumps around a lot, and sometimes ends up highlighting part of the graph elements
 - i want to see a full audit breakdown of like, what things are being calculated, how the calculation works, etc. make this a separate table below the year by year table maybe
 - make the year by year table collapseable 
 - integrate the milestones into the graph somehow?

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type {
-  CoreConfig, Assumptions, StateCode, RothConversionPlan,
+  CoreConfig, StateCode, RothConversionPlan,
   HomeHolding, HomeEvent,
   EquityCompPlan, EquityVestWindow, EquityExerciseEvent,
   SocialSecurityPlan,
@@ -490,11 +490,10 @@ const EquityEditor: React.FC<EquityEditorProps> = ({ plan, currentAge, onChange 
 
 interface Props {
   core: CoreConfig;
-  assumptions: Assumptions;
   onChange: (next: CoreConfig) => void;
 }
 
-export const Settings: React.FC<Props> = ({ core, assumptions, onChange }) => {
+export const Settings: React.FC<Props> = ({ core, onChange }) => {
   const set = <K extends keyof CoreConfig>(key: K, value: CoreConfig[K]) => {
     onChange({ ...core, [key]: value });
   };

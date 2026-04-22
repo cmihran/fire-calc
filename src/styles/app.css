@@ -606,6 +606,9 @@ body {
 .chart-card {
   padding: 1.429rem 0.857rem 0.857rem 0;
   margin-bottom: 1.714rem;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 
 .chart-card--grab,

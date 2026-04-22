@@ -125,7 +125,7 @@ export const App: React.FC = () => {
             onColorChange={setScenarioColor}
           />
 
-          <Settings core={activeScenario.core} assumptions={ASSUMPTIONS} onChange={setActiveCore} />
+          <Settings core={activeScenario.core} onChange={setActiveCore} />
 
           <Controls sliders={activeScenario.sliders} onChange={setActiveSliders} />
 

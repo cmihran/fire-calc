@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AreaChart,
   Area,
@@ -33,12 +33,43 @@ export const Chart: React.FC<Props> = ({
   retirementAge,
   onRetirementAgeChange,
 }) => {
-  const dragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
   const [nearLine, setNearLine] = useState(false);
+
+  // Smooth visual tween for the retirement marker so integer-snap age
+  // changes glide instead of teleporting. Simulation still keys off the
+  // integer retirementAge; only the marker's rendered x uses displayAge.
+  const displayAgeRef = useRef(retirementAge);
+  const [displayAge, setDisplayAge] = useState(retirementAge);
+  const tweenRaf = useRef<number | null>(null);
+  useEffect(() => {
+    const from = displayAgeRef.current;
+    const to = retirementAge;
+    if (from === to) return;
+    if (tweenRaf.current != null) cancelAnimationFrame(tweenRaf.current);
+    const start = performance.now();
+    const DUR = 160; // ms
+    const tick = () => {
+      const t = Math.min(1, (performance.now() - start) / DUR);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      const val = from + (to - from) * eased;
+      displayAgeRef.current = val;
+      setDisplayAge(val);
+      if (t < 1) tweenRaf.current = requestAnimationFrame(tick);
+      else tweenRaf.current = null;
+    };
+    tweenRaf.current = requestAnimationFrame(tick);
+    return () => { if (tweenRaf.current != null) cancelAnimationFrame(tweenRaf.current); };
+  }, [retirementAge]);
 
   const activeSeries = series.find((s) => s.scenario.id === activeScenarioId) ?? series[0];
   const activeTicks = activeSeries.ticks;
   const multiMode = series.length > 1;
+
+  const startAge = activeTicks[0]?.age ?? 20;
+  const endAge = activeTicks[activeTicks.length - 1]?.age ?? 90;
 
   // Merge all scenario net-worth series onto a shared age axis for multi-mode.
   const mergedData = useMemo(() => {
@@ -54,43 +85,61 @@ export const Chart: React.FC<Props> = ({
     return Array.from(byAge.values()).sort((a, b) => (a.age as number) - (b.age as number));
   }, [multiMode, series, activeTicks]);
 
-  const handleMouseDown = useCallback((e: { activeLabel?: unknown }) => {
-    if (e?.activeLabel != null && onRetirementAgeChange) {
-      const label = Number(e.activeLabel);
-      if (Math.abs(label - retirementAge) <= 1) {
-        dragging.current = true;
-      }
-    }
-  }, [retirementAge, onRetirementAgeChange]);
+  // Continuous age from pointer x using the plot area's actual bounding rect
+  // (not activeLabel, which snaps to nearest integer tick and causes jumpiness).
+  const ageFromClientX = (clientX: number): number | null => {
+    const plot = containerRef.current?.querySelector<SVGElement>('.recharts-cartesian-grid');
+    if (!plot) return null;
+    const rect = plot.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const frac = (clientX - rect.left) / rect.width;
+    const clamped = Math.max(0, Math.min(1, frac));
+    return startAge + clamped * (endAge - startAge);
+  };
 
-  const handleMouseMove = useCallback((e: { activeLabel?: unknown }) => {
-    if (!e?.activeLabel) { setNearLine(false); return; }
-    const label = Number(e.activeLabel);
-    setNearLine(Math.abs(label - retirementAge) <= 1);
-    if (dragging.current && onRetirementAgeChange) {
-      const age = Math.round(label);
-      const startAge = activeTicks[0]?.age ?? 20;
-      const endAge = activeTicks[activeTicks.length - 1]?.age ?? 90;
-      if (age > startAge + 1 && age < endAge - 1) {
-        onRetirementAgeChange(age);
-      }
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!onRetirementAgeChange) return;
+    const age = ageFromClientX(e.clientX);
+    if (age == null) return;
+    if (Math.abs(age - retirementAge) <= 1.5) {
+      draggingRef.current = true;
+      setDragging(true);
+      e.currentTarget.setPointerCapture?.(e.pointerId);
     }
-  }, [retirementAge, activeTicks, onRetirementAgeChange]);
+  };
 
-  const handleMouseUp = useCallback(() => { dragging.current = false; }, []);
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const age = ageFromClientX(e.clientX);
+    if (age == null) { setNearLine(false); return; }
+    setNearLine(Math.abs(age - retirementAge) <= 1.5);
+    if (draggingRef.current && onRetirementAgeChange) {
+      const bounded = Math.max(startAge + 1, Math.min(endAge - 1, Math.round(age)));
+      if (bounded !== retirementAge) onRetirementAgeChange(bounded);
+    }
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (draggingRef.current) {
+      draggingRef.current = false;
+      setDragging(false);
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    }
+  };
 
   return (
   <div
-    className={`card chart-card ${nearLine || dragging.current ? 'chart-card--grab' : ''}`}
-    onMouseLeave={handleMouseUp}
+    ref={containerRef}
+    className={`card chart-card ${nearLine || dragging ? 'chart-card--grab' : ''}`}
+    onPointerDown={onPointerDown}
+    onPointerMove={onPointerMove}
+    onPointerUp={endDrag}
+    onPointerCancel={endDrag}
+    onPointerLeave={() => { if (!draggingRef.current) setNearLine(false); }}
   >
     <ResponsiveContainer width="100%" height={480}>
       <AreaChart
         data={mergedData as Tick[]}
         margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
-        onMouseDown={handleMouseDown as (e: unknown) => void}
-        onMouseMove={handleMouseMove as (e: unknown) => void}
-        onMouseUp={handleMouseUp}
       >
         <defs>
           <linearGradient id="gTaxable" x1="0" y1="0" x2="0" y2="1">
@@ -137,24 +186,23 @@ export const Chart: React.FC<Props> = ({
         ))}
 
         {/* Glow behind retirement line on hover */}
-        {(nearLine || dragging.current) && (
+        {(nearLine || dragging) && (
           <ReferenceLine
-            x={retirementAge}
-            stroke="#f7c77d"
+            x={displayAge}
+            stroke={activeSeries.scenario.color}
             strokeWidth={12}
-            strokeOpacity={0.12}
+            strokeOpacity={0.18}
           />
         )}
 
         <ReferenceLine
-          x={retirementAge}
-          stroke={nearLine || dragging.current ? '#ffd700' : '#f7c77d'}
-          strokeDasharray={nearLine || dragging.current ? undefined : '4 2'}
-          strokeWidth={nearLine || dragging.current ? 2.5 : 1.5}
+          x={displayAge}
+          stroke={activeSeries.scenario.color}
+          strokeWidth={nearLine || dragging ? 2.5 : 1.5}
           label={{
-            value: nearLine || dragging.current ? `↔ ${retirementAge}` : `Retire @ ${retirementAge}`,
+            value: nearLine || dragging ? `↔ ${retirementAge}` : `Retire @ ${retirementAge}`,
             position: 'insideTopRight',
-            fill: nearLine || dragging.current ? '#ffd700' : '#f7c77d',
+            fill: activeSeries.scenario.color,
             fontSize: 11,
             fontWeight: 600,
           }}
