@@ -2,7 +2,6 @@ node_modules/
 dist/
 .DS_Store
 *.log
-TODO.md
 test-results/
 playwright-report/
 .playwright/
